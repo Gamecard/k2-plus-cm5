@@ -1,0 +1,14 @@
+# K2-CM5-Traeger Alpha 1: taeglich die Klipper-Konfiguration sichern
+# Ziel: /etc/systemd/system/k2-config-sicherung.timer (install-traeger.sh)
+# Persistent=true: verpasste Laeufe (Drucker aus) kommen nach dem Start.
+# Bei read-only Root liegt der Zeitstempel im RAM -> Lauf nach jedem Start.
+[Unit]
+Description=K2-Traeger: taegliche Sicherung der Klipper-Konfiguration
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

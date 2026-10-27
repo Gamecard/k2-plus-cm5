@@ -1,0 +1,22 @@
+  J1- 1 ETH_A_P        <- im Spiegelfall Breakout 50 (5 V): Übertrager trennt galvanisch; Gleichspannung lädt nur den Bob-Smith-Kondensator – sicher (B)
+  J1- 2 ETH_A_N        <- im Spiegelfall Breakout 49 (5 V): Übertrager trennt galvanisch; Gleichspannung lädt nur den Bob-Smith-Kondensator – sicher (B)
+  J1- 4 ETH_B_P        <- im Spiegelfall Breakout 47 (5 V): Übertrager trennt galvanisch; Gleichspannung lädt nur den Bob-Smith-Kondensator – sicher (B)
+  J1- 5 ETH_B_N        <- im Spiegelfall Breakout 46 (5 V): Übertrager trennt galvanisch; Gleichspannung lädt nur den Bob-Smith-Kondensator – sicher (B)
+  J1-18 J1_GND         <- im Spiegelfall Breakout 33 (GND): GND auf GND (18 <-> 33) – sicher
+  J1-19 RS485_B        <- im Spiegelfall Breakout 32 (Breakout 32): Bus-Pins des THVD1450 −7…+12 V tolerant – sicher
+  J1-20 RS485_A        <- im Spiegelfall Breakout 31 (GND): Bus-Pins des THVD1450 −7…+12 V tolerant – sicher
+  J1-26 B26_UART2_TX   <- im Spiegelfall Breakout 25 (GND): über 1 kΩ + Ioff-Puffer (5,5-V-tolerant) – sicher
+  J1-28 B28_UART2_RX   <- im Spiegelfall Breakout 23 (GND): über 1 kΩ + Ioff-Puffer (5,5-V-tolerant) – sicher
+  J1-30 B30_UART4_TX   <- im Spiegelfall Breakout 21 (GND): über 1 kΩ + Ioff-Puffer (5,5-V-tolerant) – sicher
+  J1-32 B32_UART4_RX   <- im Spiegelfall Breakout 19 (Breakout 19): über 1 kΩ + Ioff-Puffer (5,5-V-tolerant) – sicher
+  J1-33 J1_GND         <- im Spiegelfall Breakout 18 (GND): GND auf GND (18 <-> 33) – sicher
+  J1-34 HUB_DM         <- im Spiegelfall Breakout 17 (5-V-Signal): 5-V-Signal/GND auf USB-Leitung: USB 2.0 fordert Kurzschlussfestigkeit gegen VBUS (V); ESD-VBUS-Pin offen
+  J1-35 HUB_DP         <- im Spiegelfall Breakout 16 (GND): 5-V-Signal/GND auf USB-Leitung: USB 2.0 fordert Kurzschlussfestigkeit gegen VBUS (V); ESD-VBUS-Pin offen
+  J1-37 CAM_DM         <- im Spiegelfall Breakout 14 (5-V-Signal): 5-V-Signal/GND auf USB-Leitung: USB 2.0 fordert Kurzschlussfestigkeit gegen VBUS (V); ESD-VBUS-Pin offen
+  J1-38 CAM_DP         <- im Spiegelfall Breakout 13 (Breakout 13): 5-V-Signal/GND auf USB-Leitung: USB 2.0 fordert Kurzschlussfestigkeit gegen VBUS (V); ESD-VBUS-Pin offen
+  J1-45 BR_5V          <- im Spiegelfall Breakout  6 (GND): Drucker-5V-Netz bekommt GND/Ethernet-Kontakte -> rote LED D10 bleibt AUS (Erkennung)
+  J1-46 BR_5V          <- im Spiegelfall Breakout  5 (Breakout 5): Drucker-5V-Netz bekommt GND/Ethernet-Kontakte -> rote LED D10 bleibt AUS (Erkennung)
+  J1-47 BR_5V          <- im Spiegelfall Breakout  4 (Breakout 4): Drucker-5V-Netz bekommt GND/Ethernet-Kontakte -> rote LED D10 bleibt AUS (Erkennung)
+  J1-48 BR_5V          <- im Spiegelfall Breakout  3 (GND): Drucker-5V-Netz bekommt GND/Ethernet-Kontakte -> rote LED D10 bleibt AUS (Erkennung)
+  J1-49 BR_5V          <- im Spiegelfall Breakout  2 (Breakout 2): Drucker-5V-Netz bekommt GND/Ethernet-Kontakte -> rote LED D10 bleibt AUS (Erkennung)
+  J1-50 BR_5V          <- im Spiegelfall Breakout  1 (Breakout 1): Drucker-5V-Netz bekommt GND/Ethernet-Kontakte -> rote LED D10 bleibt AUS (Erkennung)

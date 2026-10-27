@@ -1,0 +1,5 @@
+DRC: 12 Einträge (Fehler 0, Warnungen 12)
+    warning  lib_footprint_mismatch              1
+    warning  via_dangling                        11
+Nicht verbunden: 0 Einträge (Fehler 0, Warnungen 0)
+Schaltplan-Parität: 0 Einträge (Fehler 0, Warnungen 0)

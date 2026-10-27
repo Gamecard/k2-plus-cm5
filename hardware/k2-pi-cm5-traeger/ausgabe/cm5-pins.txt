@@ -1,0 +1,48 @@
+CM5-Pin-Wächter: 200 Pins gegen Datenblatt geprüft, 103 belegt (GND 51, 5V 6, 3V3/VREF 3), Rest offen.
+Belegte Signal-Pins:
+    4 Ethernet_Pair1_P       -> ETH1_P
+    6 Ethernet_Pair1_N       -> ETH1_N
+   10 Ethernet_Pair0_N       -> ETH0_N
+   12 Ethernet_Pair0_P       -> ETH0_P
+   15 Ethernet_nLED3         -> ETH_NLED3
+   17 Ethernet_nLED2         -> ETH_NLED2
+   21 LED_nACT               -> LED_NACT
+   28 GPIO13                 -> UART4_RX
+   31 GPIO12                 -> UART4_TX
+   34 GPIO5                  -> UART2_RX
+   35 ID_SC                  -> DSI_SCL
+   36 ID_SD                  -> DSI_SDA
+   38 GPIO11                 -> CAN_SCK
+   39 GPIO8                  -> CAN_CS
+   40 GPIO9                  -> CAN_MISO
+   41 GPIO25                 -> CAN_INT
+   44 GPIO10                 -> CAN_MOSI
+   48 GPIO27                 -> PWR_FAIL_N
+   50 GPIO17                 -> RS485_DE
+   51 GPIO15                 -> UART0_RX
+   54 GPIO4                  -> UART2_TX
+   55 GPIO14                 -> UART0_TX
+   56 GPIO3                  -> I2C1_SCL
+   58 GPIO2                  -> I2C1_SDA
+   78 GPIO_VREF              -> CM5_3V3
+   84 CM5_3.3V (Output)      -> CM5_3V3
+   86 CM5_3.3V (Output)      -> CM5_3V3
+   92 PWR_Button             -> PWR_BUT
+   93 nRPIBOOT               -> NRPIBOOT
+   94 CC1                    -> CC1_CM5
+   96 CC2                    -> CC2_CM5
+   97 CAM_GPIO0              -> CAM_GPIO0
+   99 PMIC_Enable            -> PMIC_EN
+  100 CAM_GPIO1              -> CAM_GPIO1
+  103 USB_N                  -> OTG_DM
+  105 USB_P                  -> OTG_DP
+  134 USB3-0-DP              -> CAM_DP
+  136 USB3-0-DM              -> CAM_DM
+  163 USB3-1-DP              -> HUB_DP
+  165 USB3-1-DM              -> HUB_DM
+  175 MIPI1_D0_N             -> DSI1_D0_N
+  177 MIPI1_D0_P             -> DSI1_D0_P
+  181 MIPI1_D1_N             -> DSI1_D1_N
+  183 MIPI1_D1_P             -> DSI1_D1_P
+  187 MIPI1_C_N              -> DSI1_C_N
+  189 MIPI1_C_P              -> DSI1_C_P

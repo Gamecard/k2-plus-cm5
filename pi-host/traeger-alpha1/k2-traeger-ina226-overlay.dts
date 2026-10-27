@@ -1,0 +1,52 @@
+// K2-CM5-Traeger Alpha 1: INA226-Strommesser an I2C1 (GPIO2 SDA / GPIO3 SCL)
+// als hwmon (Treiber ina2xx). Erzeugen auf dem Pi (macht install-traeger.sh):
+//   dtc -@ -I dts -O dtb -o /boot/firmware/overlays/k2-traeger-ina226.dtbo \
+//       k2-traeger-ina226-overlay.dts
+// Laden: dtoverlay=k2-traeger-ina226 (config.txt)
+//
+// Adressen laut Schaltplan (generator/k2_traeger.py, INA226 A1/A0):
+//   U4 0x40: A1 = A0 = GND, Shunt R23 5 mOhm, misst 24-V-Eingang (hinter F1),
+//            ALERT -> PWR_FAIL_N -> GPIO27 (Stromausfall, k2_stromausfall)
+//   U5 0x41: A1 = GND, A0 = VS, Shunt R24 10 mOhm, misst CM5-5V
+// shunt-resistor in Mikroohm (Bindung ti,ina2xx.yaml). Der Treiber setzt beim
+// Laden ALERT-Latch EIN (ina2xx.c, ina2xx_init) - k2_stromausfall rechnet damit.
+// Ein INA226 0x44 (Toolhead) gibt es seit dem Umbau 24.10.2026 nicht mehr.
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2712";
+
+	fragment@0 {
+		target = <&i2c_arm>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			k2_ina_eingang: ina226@40 {
+				compatible = "ti,ina226";
+				reg = <0x40>;
+				shunt-resistor = <5000>;
+				label = "k2_eingang_24v";
+				status = "okay";
+			};
+
+			k2_ina_cm5: ina226@41 {
+				compatible = "ti,ina226";
+				reg = <0x41>;
+				shunt-resistor = <10000>;
+				label = "k2_cm5_5v";
+				status = "okay";
+			};
+		};
+	};
+
+	__overrides__ {
+		// z. B. dtoverlay=k2-traeger-ina226,shunt40=5000
+		shunt40 = <&k2_ina_eingang>,"shunt-resistor:0";
+		shunt41 = <&k2_ina_cm5>,"shunt-resistor:0";
+		ina41 = <&k2_ina_cm5>,"status";
+	};
+};

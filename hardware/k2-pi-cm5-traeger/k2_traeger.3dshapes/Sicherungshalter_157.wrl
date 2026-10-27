@@ -1,0 +1,4 @@
+#VRML V2.0 utf8
+# Sicherungshalter_157 – schlichter Quader (K2-CM5-Träger, eigene Darstellung)
+Transform { translation 0.0000 0.0000 0.0787 children [ Shape { appearance Appearance { material Material { diffuseColor 0.55 0.55 0.58 specularColor 0.2 0.2 0.2 shininess 0.3 transparency 0 } } geometry Box { size 2.5591 1.4567 0.1575 } } ] }
+Transform { translation 0.0000 0.0000 0.8465 children [ Shape { appearance Appearance { material Material { diffuseColor 0.85 0.85 0.8 specularColor 0.2 0.2 0.2 shininess 0.3 transparency 0 } } geometry Box { size 2.3228 1.0591 1.3780 } } ] }

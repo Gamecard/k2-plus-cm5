@@ -1,0 +1,21 @@
+Lage-Wächter (Draufsicht von oben, mm; x −10 … 80, y 0 … 56,1):
+  H1 (L1):   8.80 |  4.15 Ø 3.50   Soll 8.80 | 4.15 Ø 3.5  OK
+  H2 (L2):  76.90 |  4.21 Ø 3.50   Soll 76.90 | 4.21 Ø 3.5  OK
+  H3 (L3):   3.01 | 53.49 Ø 3.50   Soll 3.01 | 53.49 Ø 3.5  OK
+  H4 (L4):  63.41 | 53.41 Ø 3.50   Soll 63.41 | 53.41 Ø 3.5  OK
+  J1: Pin 1 (-4.9, 45.1), Pin 50 (-4.9, 20.6) -> Pin 1 zur Kante D (unten); Vorderkante x = -10.00, Körper y 18.60 … 47.10
+  CM5: Modul x 8.9 … 63.9 / y 9.5 … 49.5, Drehung 90°, max. Pad-Abweichung zur offiziellen Geometrie 0.0 µm; Pin 1 (29.1, 48.0), Pin 101 (29.1, 14.08)
+    Abstand Modulrand ↔ L1-Mitte 5.35 mm (Kopf-Radius 2.75)
+    Abstand Modulrand ↔ L2-Mitte 14.04 mm (Kopf-Radius 2.75)
+    Abstand Modulrand ↔ L3-Mitte 7.11 mm (Kopf-Radius 2.75)
+    Abstand Modulrand ↔ L4-Mitte 3.91 mm (Kopf-Radius 2.75)
+  Oberseiten-Bauteile unter dem CM5: keine
+  J1: Kante A, Abstand Courtyard ↔ Kante -0.29 mm
+  J7: Kante A, Abstand Courtyard ↔ Kante -0.14 mm
+  J10: Kante B, Abstand Courtyard ↔ Kante 0.56 mm (stehend)
+  J9b: Kante B, Abstand Courtyard ↔ Kante 0.10 mm (stehend)
+  J12: Kante C, Abstand Courtyard ↔ Kante 0.06 mm
+  J11: Kante D, Abstand Courtyard ↔ Kante -0.09 mm (stehend)
+  J7 (XT30) über J1: Courtyard-Lücke J7 ↔ J1 1.16 mm, Drehung 90° (Stecköffnung nach links), Pin 2 (+24 V) (3.5, 11.9), Pin 1 (GND) (3.5, 6.9)
+  J10 (USB-C stehend) Mitte (17.5, 3.6), Abstand zu L1 8.7 mm
+  Unterseite (99): C1, C10, C11, C12, C13, C14, C15, C16, C17, C18, C19, C2, C20, C21, C22, C25, C27, C28, C3, C30, C31, C32, C33, C34, C35, C36, C4, C5, C6, C7, C8, C9, D15, D3, D4, D5, D6, D7, D8, F3, FID4, FID5, FID6, JP2, JP3, JP5, JP6, JP7, L2, R1, R10, R11, R12, R13, R14, R15, R16, R17, R18, R19, R2, R20, R23, R24, R26, R27, R28, R29, R3, R30, R31, R36, R37, R4, R43, R44, R45, R46, R48, R49, R50, R9, TP10, TP11, TP12, TP2, U1, U10, U11, U12, U13, U14, U2, U3, U4, U5, U7, U8, Y1

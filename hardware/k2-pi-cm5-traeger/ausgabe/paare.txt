@@ -1,0 +1,13 @@
+Paar-Wächter (Längenabgleich, Via = 1,53 mm; Bahnbreite/Abstand USB 0,25/0,15, Ethernet und DSI 0,20/0,20):
+  CAM    CAM_DP      62.793 mm (0 Vias)   CAM_DM      62.793 mm (2 Vias)   Δ = 0.000 mm OK
+  HUB    HUB_DP      61.373 mm (0 Vias)   HUB_DM      61.373 mm (0 Vias)   Δ = 0.000 mm OK
+  OTG    OTG_DP      28.868 mm (2 Vias)   OTG_DM      28.868 mm (2 Vias)   Δ = 0.000 mm OK
+  ETH1   ETH1_P      25.650 mm (0 Vias)   ETH1_N      25.650 mm (0 Vias)   Δ = 0.000 mm OK
+  ETH0   ETH0_P      33.200 mm (0 Vias)   ETH0_N      33.200 mm (0 Vias)   Δ = 0.000 mm OK
+  ETH_A  ETH_A_P      7.825 mm (0 Vias)   ETH_A_N      7.825 mm (0 Vias)   Δ = 0.000 mm OK
+  ETH_B  ETH_B_P     12.705 mm (0 Vias)   ETH_B_N     12.705 mm (0 Vias)   Δ = 0.000 mm OK
+  DSI_C  DSI1_C_P    49.870 mm (0 Vias)   DSI1_C_N    49.870 mm (0 Vias)   Δ = 0.000 mm OK
+  DSI_D1 DSI1_D1_P   49.870 mm (0 Vias)   DSI1_D1_N   49.870 mm (0 Vias)   Δ = 0.000 mm OK
+  DSI_D0 DSI1_D0_P   49.870 mm (0 Vias)   DSI1_D0_N   49.870 mm (0 Vias)   Δ = 0.000 mm OK
+  DSI_D0 gegen Takt DSI_C: 49.870 / 49.870 mm   Δ = 0.000 mm OK (Grenze 0,5 mm)
+  DSI_D1 gegen Takt DSI_C: 49.870 / 49.870 mm   Δ = 0.000 mm OK (Grenze 0,5 mm)

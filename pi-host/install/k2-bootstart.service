@@ -1,0 +1,22 @@
+# k2-pi-paket: k2-bootstart – K2-Geräte aus dem Bootloader in die App starten (vor Klipper)
+# VORLAGE: install.sh --bootstart ersetzt @USER@ @PY@ @TOOLS@ @CONFIG_DIR@ @KLIPPER_DIR@ @DIENST@
+# und aktiviert die Einheit. Ohne --bootstart wird nichts installiert (Standard AUS).
+# GERÄTETEST OFFEN – nur mit ausdrücklicher Freigabe aktivieren (BOOTSTART-WERKZEUG.md,
+# PI-INBETRIEBNAHME.md 1.1/2.5). Vorher den Handlauf (k2-bootstart.py) am Gerät prüfen.
+# Ein Fehlschlag hält Klipper NICHT auf (nur Before=, kein Requires=).
+[Unit]
+Description=K2: Geraete aus dem Bootloader in die App starten (vor Klipper, nur Start)
+Before=@DIENST@.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=@USER@
+Environment=KLIPPER_DIR=@KLIPPER_DIR@
+ExecStart=@PY@ -B @TOOLS@/k2-bootstart.py --aus-config @CONFIG_DIR@ --klipper @KLIPPER_DIR@ --warte-auf-ports 30
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

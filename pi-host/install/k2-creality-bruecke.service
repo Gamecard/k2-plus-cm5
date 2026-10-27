@@ -1,0 +1,18 @@
+# k2-pi-paket: k2-creality-bruecke – OrcaSlicer „CrealityPrint“-Druckstart (WebSocket Port 9999) an Moonraker weiterreichen
+# VORLAGE: install.sh ersetzt @USER@ @PY@ (Python aus moonraker-env, braucht tornado) @TOOLS@ @MOONRAKER_DIENST@
+# und aktiviert die Einheit (Standard AN, abschaltbar mit --ohne-creality-bruecke). Upload: nginx-Block location ~ ^/upload/.
+# Log: journalctl -u k2-creality-bruecke
+[Unit]
+Description=K2 Creality-Brücke (Orca CrealityPrint-Druckstart -> Moonraker)
+After=@MOONRAKER_DIENST@.service
+Wants=@MOONRAKER_DIENST@.service
+
+[Service]
+Type=simple
+User=@USER@
+ExecStart=@PY@ @TOOLS@/k2_creality_bruecke.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

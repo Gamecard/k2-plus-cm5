@@ -1,0 +1,50 @@
+{
+ "main": {
+  "version": "1.1.0.48-293-g493f9a0f-dirty-20241220_140327-ubuntu1804",
+  "commands": {
+   "config_prtouch_apax oid=%c oid_estp=%c": 40,
+   "config_prtouch_pres oid=%c idx=%c swp_pin=%u clk_pin=%u sdo_pin=%u": 49,
+   "config_prtouch_step oid=%c oid_xstp=%u oid_ystp=%u oid_zstp=%u swp_pin=%u": 45,
+   "cont_prtouch_step oid=%c": 41,
+   "read_prtouch_pres oid=%c is_src=%c ch=%c idx=%c len=%c": 46,
+   "read_prtouch_step oid=%c idx=%c len=%c": 42,
+   "start_prtouch_apax oid=%c cfg_regs=%c acq_tick=%u": 39,
+   "start_prtouch_pres oid=%c cfg_regs=%c acq_tick=%u ned_tftr=%c ned_hftr=%c ned_lftr=%u min_hold=%i max_hold=%i add_hold=%i lmt_dead=%u": 48,
+   "start_prtouch_step oid=%c aqc_tick=%u": 44,
+   "stop_prtouch_apax oid=%c": 38,
+   "stop_prtouch_pres oid=%c sta_swap=%c": 47,
+   "stop_prtouch_step oid=%c": 43
+  },
+  "responses": {
+   "ack_prtouch oid=%c err=%c expar0=%u expar1=%u": 95,
+   "resault_prtouch_apax oid=%c ch=%c len=%c ticks=%.*s datas=%.*s espds=%.*s": 94,
+   "resault_prtouch_pres oid=%c tri_chxs=%c buf_len=%c ch=%c idx=%c len=%c ticks=%.*s datas=%.*s": -30,
+   "resault_prtouch_step oid=%c buf_len=%c idx=%c len=%c ticks=%.*s datas=%.*s": -31,
+   "resault_prtouch_step_cnt oid=%c cnt_x=%i cnt_y=%i cnt_z=%i": -32
+  }
+ },
+ "nozzle": {
+  "version": "1.1.0.48-293-g493f9a0f-dirty-20241220_143931-ubuntu1804",
+  "commands": {
+   "config_prtouch_apax oid=%c oid_estp=%c": 40,
+   "config_prtouch_pres oid=%c idx=%c swp_pin=%u clk_pin=%u sdo_pin=%u": 49,
+   "config_prtouch_step oid=%c oid_xstp=%u oid_ystp=%u oid_zstp=%u swp_pin=%u": 45,
+   "cont_prtouch_step oid=%c": 41,
+   "read_prtouch_pres oid=%c is_src=%c ch=%c idx=%c len=%c": 46,
+   "read_prtouch_step oid=%c idx=%c len=%c": 42,
+   "start_prtouch_apax oid=%c cfg_regs=%c acq_tick=%u": 39,
+   "start_prtouch_pres oid=%c cfg_regs=%c acq_tick=%u ned_tftr=%c ned_hftr=%c ned_lftr=%u min_hold=%i max_hold=%i add_hold=%i lmt_dead=%u": 48,
+   "start_prtouch_step oid=%c aqc_tick=%u": 44,
+   "stop_prtouch_apax oid=%c": 38,
+   "stop_prtouch_pres oid=%c sta_swap=%c": 47,
+   "stop_prtouch_step oid=%c": 43
+  },
+  "responses": {
+   "ack_prtouch oid=%c err=%c expar0=%u expar1=%u": 95,
+   "resault_prtouch_apax oid=%c ch=%c len=%c ticks=%.*s datas=%.*s espds=%.*s": 94,
+   "resault_prtouch_pres oid=%c tri_chxs=%c buf_len=%c ch=%c idx=%c len=%c ticks=%.*s datas=%.*s": -30,
+   "resault_prtouch_step oid=%c buf_len=%c idx=%c len=%c ticks=%.*s datas=%.*s": -31,
+   "resault_prtouch_step_cnt oid=%c cnt_x=%i cnt_y=%i cnt_z=%i": -32
+  }
+ }
+}

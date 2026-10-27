@@ -1,0 +1,41 @@
+(version 1)
+# K2-CM5-Träger Alpha 1 – Zusatzregeln (spätere Regeln haben Vorrang)
+# Drucker-5V (BR_5V) hält überall >= 0,4 mm Abstand zu fremden Netzen (Ausnahme: Feinraster J1)
+(rule "BR_5V Abstand"
+  (condition "A.NetName == 'BR_5V' && B.NetName != 'BR_5V'")
+  (constraint clearance (min 0.4mm)))
+# Feinraster: FFC J1 (0,5 mm) und CM5-Steckverbinder J2 (0,4 mm) – Pad-Pad nach Bauteilgeometrie
+(rule "Feinraster J1"
+  (condition "A.memberOfFootprint('J1') && B.memberOfFootprint('J1')")
+  (constraint clearance (min 0.15mm)))
+(rule "BR_5V-Kamm an J1"
+  (condition "A.NetName == 'BR_5V' && B.memberOfFootprint('J1') && B.NetName != 'BR_5V'")
+  (constraint clearance (min 0.15mm)))
+(rule "BR_5V-Bahnen an J1"
+  (condition "A.NetName == 'BR_5V' && B.NetName != 'BR_5V' && A.insideCourtyard('J1')")
+  (constraint clearance (min 0.15mm)))
+(rule "Feinraster J2"
+  (condition "A.memberOfFootprint('J2') && B.memberOfFootprint('J2')")
+  (constraint clearance (min 0.15mm)))
+# Feinraster-ICs (MSOP-10, VQFN, USON) – Pad-Pad im Gehäuse
+(rule "Feinraster ICs"
+  (condition "(A.memberOfFootprint('U4') && B.memberOfFootprint('U4')) || (A.memberOfFootprint('U5') && B.memberOfFootprint('U5')) || (A.memberOfFootprint('U6') && B.memberOfFootprint('U6')) || (A.memberOfFootprint('U8') && B.memberOfFootprint('U8')) || (A.memberOfFootprint('U9') && B.memberOfFootprint('U9')) || (A.memberOfFootprint('D7') && B.memberOfFootprint('D7')) || (A.memberOfFootprint('J10') && B.memberOfFootprint('J10'))")
+  (constraint clearance (min 0.1mm)))
+# Vias von Bus-Netzen (RS485/CAN): 0,15 mm wie Standard (Freerouting gibt Vias nur den Standardabstand)
+(rule "Bus-Vias"
+  (condition "A.Type == 'Via' && A.NetClass == 'Bus'")
+  (constraint clearance (min 0.15mm)))
+# Bohrung–Bohrung wie JLCPCB: verschiedene Netze 0,5 mm
+(rule "Bohrungen verschiedene Netze"
+  (condition "A.NetName != B.NetName")
+  (constraint hole_to_hole (min 0.5mm)))
+# Leistungsteile ohne Wärmefallen
+(rule "Leistung massiv"
+  (condition "A.memberOfFootprint('U7') || A.memberOfFootprint('U8') || A.memberOfFootprint('U9') || A.memberOfFootprint('F1') || A.memberOfFootprint('R23') || A.memberOfFootprint('R24') || A.memberOfFootprint('R25') || A.memberOfFootprint('J7') || A.memberOfFootprint('J9') || A.memberOfFootprint('L1') || A.memberOfFootprint('C1?') || A.memberOfFootprint('C2?')")
+  (constraint zone_connection solid))
+# J1-Pads nicht an Flächen anbinden (GND 18/33 sind geroutet, über PTC F3)
+(rule "J1 ohne Flaechenanbindung"
+  (condition "A.memberOfFootprint('J1')")
+  (constraint zone_connection none))
+(rule "Thermik ein Steg"
+  (constraint min_resolved_spokes 1))

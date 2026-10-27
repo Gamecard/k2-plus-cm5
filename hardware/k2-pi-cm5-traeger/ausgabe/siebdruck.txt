@@ -1,0 +1,11 @@
+Siebdruck-Wächter: 51 sichtbare Texte, 735 Paare (Mindestabstand 0.3 mm, 0.15 mm zu Lötstopp-Öffnungen, Schrifthöhe ≥ 0,8 mm). Warnhinweis: Text „ALPHA – NUR FÜR TESTZWECKE“, Text „NUTZUNG AUF EIGENE GEFAHR“, Text „ALPHA · NUR TEST“, Text „NICHT KOMMERZIELL · EIGENE GEFAHR“
+Kleinste Abstände zwischen Texten:
+   0.34 mm (oben) Text „BOOT“ ↔ Text „PWR“
+   0.34 mm (oben) Text „RUN“ ↔ Text „BOOT“
+   0.34 mm (unten) Text „JP6/JP7 zu =“ ↔ Text „CC1/CC2 an CM5“
+   0.34 mm (unten) Text „R43/44 nur“ ↔ Text „bei JP offen“
+   0.34 mm (unten) Text „K2-CM5-Träger Alpha 1 · Unterseite“ ↔ Text „ALPHA · NUR TEST“
+Kleinste Abstände Text ↔ Lötstopp-Öffnung:
+   0.21 mm (oben) D10.Reference „D10“ ↔ F1.1
+   0.22 mm (oben) Text „G B A“ ↔ J11.1
+   0.22 mm (oben) Text „G B A“ ↔ J11.2

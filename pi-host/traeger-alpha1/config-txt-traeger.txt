@@ -1,0 +1,28 @@
+# >>> K2-TRAEGER-ALPHA1 (install-traeger.sh, Block nicht von Hand aendern)
+# Quelle: raspberrypi/linux rpi-6.18.y, arch/arm/boot/dts/overlays/README
+# Erklaerung + Links: README-traeger-alpha1.md, Abschnitt config.txt
+# Zeilen kurz halten: lange Kommentare liessen schon eine Folgezeile fallen
+[all]
+# Kein HAT-EEPROM auf dem Traeger; ID_SD/ID_SC (GPIO0/1) = Display-I2C
+force_eeprom_read=0
+# 5 V kommen vom Traeger (kein PD-Netzteil): USB-Strom voll freigeben
+usb_max_current_enable=1
+# I2C1 auf GPIO2 SDA / GPIO3 SCL (/dev/i2c-1): INA226 0x40 und 0x41
+dtparam=i2c_arm=on
+# INA226 als hwmon: 0x40 Shunt R23 5 mOhm, 0x41 Shunt R24 10 mOhm
+dtoverlay=k2-traeger-ina226
+# UART2: GPIO4 TX / GPIO5 RX = Duesen-MCU -> /dev/ttyAMA2
+dtoverlay=uart2-pi5
+# UART4: GPIO12 TX / GPIO13 RX = Main-MCU -> /dev/ttyAMA4
+dtoverlay=uart4-pi5
+# UART0: GPIO14 TX / GPIO15 RX = RS485 THVD1450 -> /dev/ttyAMA0
+# rs485: Kernel schaltet DE ueber RTS = GPIO17 (aktiv high)
+# rs485 schaltet ctsrts mit ein: GPIO16 = CTS (auf dem Traeger offen)
+dtoverlay=uart0-pi5,rs485
+# CAN MCP2518FD: SPI0 CE0 = GPIO8, nINT = GPIO25, Quarz Y1 40 MHz
+dtoverlay=mcp251xfd,spi0-0,oscillator=40000000,interrupt=25
+# Display-Overlay steht unten fest: keine Auto-Erkennung (sonst doppelt)
+display_auto_detect=0
+# DSI1 = MIPI1 = J12, Waveshare 4.3 Zoll DSI Rev 2.2 (braucht vc4-kms-v3d)
+dtoverlay=vc4-kms-dsi-7inch
+# <<< K2-TRAEGER-ALPHA1

@@ -1,0 +1,20 @@
+# K2-CM5-Traeger Alpha 1: Einstellungen k2_stromausfall
+# Ziel: /etc/default/k2_stromausfall (wird von install-traeger.sh NICHT
+# ueberschrieben, wenn schon vorhanden). Leer = Standard aus dem Skript.
+# Bus-Unterspannungsgrenze INA226 0x40 (Alert) und Wiederkehr-Schwelle in mV
+K2SA_GRENZE_MV=20000
+K2SA_WIEDER_MV=21000
+# Bestaetigung der Flanke (ms) und Zeit mit guter Spannung bis "scharf" (s)
+K2SA_BESTAETIGUNG_MS=1
+K2SA_SCHARF_S=2
+# Dienste, die im Ernstfall eingefroren werden (systemd-Einheiten)
+K2SA_DIENSTE="klipper.service moonraker.service"
+# Einhaengepunkt der Datenpartition (k2_readonly.sh) und Logdatei
+K2SA_DATEN=/daten
+#K2SA_LOG=/daten/printer_data/logs/k2_stromausfall.log
+# 1 = zusaetzlich Notfall-sync + alle Dateisysteme ro (sysrq s+u)
+K2SA_SYSRQ=0
+# GPIO: Leitungsname, Rueckfall Chip-Label + Offset (RP1)
+K2SA_GPIO_NAME=GPIO27
+K2SA_GPIO_CHIP=pinctrl-rp1
+K2SA_GPIO_OFFSET=27

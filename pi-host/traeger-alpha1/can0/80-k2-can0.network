@@ -1,0 +1,16 @@
+# K2-CM5-Traeger Alpha 1: CAN-Bus can0 (MCP2518FD, Overlay mcp251xfd)
+# Ziel: /etc/systemd/network/80-k2-can0.network (install-traeger.sh)
+# Bitrate 1 Mbit/s fuer ein spaeteres Klipper-CAN-Toolhead (Klipper
+# docs/CANBUS.md: systemd-networkd, BitRate=1M, RequiredForOnline=no).
+# txqueuelen 1024 setzt die udev-Regel 80-k2-can0.rules.
+[Match]
+Name=can0
+
+[CAN]
+BitRate=1M
+# nach Bus-off automatisch neu starten
+RestartSec=100ms
+
+[Link]
+# can0 haelt den Start (network-online) nicht auf
+RequiredForOnline=no

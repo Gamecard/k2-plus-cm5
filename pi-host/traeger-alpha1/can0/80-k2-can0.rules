@@ -1,0 +1,4 @@
+# K2-CM5-Traeger Alpha 1: Sendewarteschlange can0 = 1024 Rahmen
+# Ziel: /etc/udev/rules.d/80-k2-can0.rules (install-traeger.sh)
+# Muster wie Klipper docs/CANBUS.md (dort 128), hier 1024 laut Vorgabe.
+SUBSYSTEM=="net", ACTION=="change|add", KERNEL=="can0", ATTR{tx_queue_len}="1024"

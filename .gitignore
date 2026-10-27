@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[co]
+
+# Lokale, nicht veröffentlichte Daten: MCU-Dictionaries (lokal/mcu-dicts/), gebaute Pi-Pakete
+# (lokal/pi-paket/), optionale Leak-Muster (lokal/leak-muster.txt), Upstream-Klipper für Tests
+# (lokal/upstream-klipper/) …
+lokal/
+
+# Pi-Pakete, falls mit pack.sh -o außerhalb von lokal/ gebaut
+k2-pi-paket-*.tar.gz
+k2-pi-paket-*.tar.gz.sha256
+
+# Platinen-Bau (hardware/k2-pi-cm5-traeger/bauen.sh): Zwischenstände und geladenes Freerouting.
+# Die bestellrelevanten Ausgaben in ausgabe/ bleiben im Repo.
+hardware/**/zwischen/
+hardware/**/werkzeuge/
+# 3D-Modelle von LCSC/EasyEDA (Lizenz ungeklärt, nur lokale Darstellung, lcsc_modelle_laden.sh)
+hardware/k2-pi-cm5-traeger/k2_traeger.3dshapes/lcsc/
+
+# KiCad: Sperr-, Sicherungs-, Cache- und lokale Projektdateien
+*.lck
+*-backups/
+fp-info-cache
+*.kicad_prl
+_autosave-*
+\#auto_saved_files\#

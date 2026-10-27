@@ -1,0 +1,242 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1640" viewBox="0 0 1800 1640" font-family="DejaVu Sans, sans-serif">
+<rect width="1800" height="1640" fill="white"/>
+<text x="40" y="52" font-size="30" fill="#212121" font-weight="bold" text-anchor="start">Verdrahtung Weg A: CM5 auf Waveshare CM5-IO-BASE-B ↔ K2 Plus (Original-Flachkabel im Breakout)</text>
+<text x="40" y="88" font-size="20" fill="#c62828" font-weight="bold" text-anchor="start">Stecken und Ziehen NUR bei ausgeschaltetem Drucker UND ausgeschaltetem Pi (Netzteil gezogen). Zuerst GND verbinden.</text>
+<text x="40" y="116" font-size="18" fill="#212121" font-weight="normal" text-anchor="start">Nummern 1–11 = Tabelle „Verbindungen“ in SCHNELLSTART-K2-PLUS.md Abschnitt 3.4. Vorher Breakout messen (Abschnitt 3.3).</text>
+<rect x="40" y="150" width="820" height="420" rx="10" fill="#e8eef8" stroke="#1565c0" stroke-width="2"/>
+<text x="60" y="186" font-size="22" fill="#1565c0" font-weight="bold" text-anchor="start">A  Pi: 40-pol. Leiste auf dem IO-Board (Draufsicht)</text>
+<circle cx="90" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="90" cy="260" r="11" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="128" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="128" cy="260" r="11" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="166" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="166" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="204" cy="300" r="13" fill="#e65100" stroke="#555" stroke-width="1"/>
+<text x="204" y="340" font-size="19" fill="#e65100" font-weight="bold" text-anchor="middle">7</text>
+<circle cx="204" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="242" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="242" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="280" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="280" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="318" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="318" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="356" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="356" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="394" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="394" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="432" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="432" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="470" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="470" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="508" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="508" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="546" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="546" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="584" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="584" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="622" cy="300" r="13" fill="#e65100" stroke="#555" stroke-width="1"/>
+<text x="622" y="340" font-size="19" fill="#e65100" font-weight="bold" text-anchor="middle">29</text>
+<circle cx="622" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="660" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="660" cy="260" r="13" fill="#1565c0" stroke="#555" stroke-width="1"/>
+<text x="660" y="238" font-size="19" fill="#1565c0" font-weight="bold" text-anchor="middle">32</text>
+<circle cx="698" cy="300" r="13" fill="#1565c0" stroke="#555" stroke-width="1"/>
+<text x="698" y="340" font-size="19" fill="#1565c0" font-weight="bold" text-anchor="middle">33</text>
+<circle cx="698" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="736" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="736" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="774" cy="300" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="774" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="812" cy="300" r="13" fill="#212121" stroke="#555" stroke-width="1"/>
+<text x="812" y="340" font-size="19" fill="#212121" font-weight="bold" text-anchor="middle">39</text>
+<circle cx="812" cy="260" r="9" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<text x="80" y="340" font-size="16" fill="#444" font-weight="normal" text-anchor="end">Pin 1</text>
+<text x="109" y="234" font-size="16" fill="#c62828" font-weight="bold" text-anchor="start">5 V (2, 4): nie benutzen</text>
+<circle cx="80" cy="402" r="9" fill="#1565c0" stroke="#555" stroke-width="1"/>
+<text x="100" y="408" font-size="18" fill="#212121" font-weight="normal" text-anchor="start">32 = TXD4 → Main-MCU, 33 = RXD4 ← Main-MCU  (/dev/ttyAMA4)</text>
+<circle cx="80" cy="434" r="9" fill="#e65100" stroke="#555" stroke-width="1"/>
+<text x="100" y="440" font-size="18" fill="#212121" font-weight="normal" text-anchor="start">7 = TXD2 → Düsen-MCU, 29 = RXD2 ← Düsen-MCU  (/dev/ttyAMA2)</text>
+<circle cx="80" cy="466" r="9" fill="#212121" stroke="#555" stroke-width="1"/>
+<text x="100" y="472" font-size="18" fill="#212121" font-weight="normal" text-anchor="start">39 = GND</text>
+<text x="60" y="510" font-size="17" fill="#333" font-weight="normal" text-anchor="start">Pin 1 am eckigen Lötpad bzw. der Markierung erkennen; Pin 2 und 4 = 5 V.</text>
+<text x="60" y="540" font-size="17" fill="#333" font-weight="normal" text-anchor="start">Zeichnung schematisch – Lage der Leiste auf dem Board kann abweichen.</text>
+<rect x="900" y="150" width="860" height="420" rx="10" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2"/>
+<text x="920" y="186" font-size="22" fill="#2e7d32" font-weight="bold" text-anchor="start">B  Breakout am Original-Flachkabel</text>
+<text x="920" y="212" font-size="17" fill="#333" font-weight="normal" text-anchor="start">Draufsicht auf die Seite mit dem Flachkabel-Stecker (Aufdruck Oberseite)</text>
+<circle cx="1694" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1694" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1663" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1663" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1632" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1632" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1601" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1601" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1570" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1570" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1539" cy="330" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="1539" cy="290" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="1508" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1508" cy="290" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="1477" cy="330" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="1477" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1446" cy="330" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="1446" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1415" cy="330" r="12" fill="#6a1b9a" stroke="#555" stroke-width="1"/>
+<text x="1415" y="368" font-size="18" fill="#6a1b9a" font-weight="bold" text-anchor="middle">19</text>
+<circle cx="1415" cy="290" r="12" fill="#6a1b9a" stroke="#555" stroke-width="1"/>
+<text x="1415" y="268" font-size="18" fill="#6a1b9a" font-weight="bold" text-anchor="middle">20</text>
+<circle cx="1384" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1384" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1353" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1353" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1322" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1322" cy="290" r="12" fill="#e65100" stroke="#555" stroke-width="1"/>
+<text x="1322" y="268" font-size="18" fill="#e65100" font-weight="bold" text-anchor="middle">26</text>
+<circle cx="1291" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1291" cy="290" r="12" fill="#e65100" stroke="#555" stroke-width="1"/>
+<text x="1291" y="268" font-size="18" fill="#e65100" font-weight="bold" text-anchor="middle">28</text>
+<circle cx="1260" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1260" cy="290" r="12" fill="#1565c0" stroke="#555" stroke-width="1"/>
+<text x="1260" y="268" font-size="18" fill="#1565c0" font-weight="bold" text-anchor="middle">30</text>
+<circle cx="1229" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1229" cy="290" r="12" fill="#1565c0" stroke="#555" stroke-width="1"/>
+<text x="1229" y="268" font-size="18" fill="#1565c0" font-weight="bold" text-anchor="middle">32</text>
+<circle cx="1198" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1198" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1167" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1167" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1136" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1136" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1105" cy="330" r="12" fill="#212121" stroke="#555" stroke-width="1"/>
+<text x="1105" y="368" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">39</text>
+<circle cx="1105" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1074" cy="330" r="12" fill="#212121" stroke="#555" stroke-width="1"/>
+<text x="1074" y="368" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">41</text>
+<circle cx="1074" cy="290" r="12" fill="#212121" stroke="#555" stroke-width="1"/>
+<text x="1074" y="268" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">42</text>
+<circle cx="1043" cy="330" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1043" cy="290" r="8" fill="#d0d0d0" stroke="#555" stroke-width="1"/>
+<circle cx="1012" cy="330" r="12" fill="#c62828" stroke="#555" stroke-width="1"/>
+<text x="1012" y="368" font-size="18" fill="#c62828" font-weight="bold" text-anchor="middle">45</text>
+<circle cx="1012" cy="290" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="981" cy="330" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="981" cy="290" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="950" cy="330" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<circle cx="950" cy="290" r="10" fill="#c62828" stroke="#555" stroke-width="1"/>
+<text x="950" y="242" font-size="15" fill="#444" font-weight="normal" text-anchor="middle">50</text>
+<text x="1694" y="368" font-size="15" fill="#444" font-weight="normal" text-anchor="middle">1</text>
+<circle cx="940" cy="402" r="9" fill="#1565c0" stroke="#555" stroke-width="1"/>
+<text x="960" y="408" font-size="17" fill="#212121" font-weight="normal" text-anchor="start">30 ← Pi TX (Main-MCU),  32 → Pi RX (Main-MCU)</text>
+<circle cx="940" cy="432" r="9" fill="#e65100" stroke="#555" stroke-width="1"/>
+<text x="960" y="438" font-size="17" fill="#212121" font-weight="normal" text-anchor="start">26 ← Pi TX (Düsen-MCU),  28 → Pi RX (Düsen-MCU)</text>
+<circle cx="940" cy="462" r="9" fill="#6a1b9a" stroke="#555" stroke-width="1"/>
+<text x="960" y="468" font-size="17" fill="#212121" font-weight="normal" text-anchor="start">20 = RS485 A,  19 = RS485 B</text>
+<circle cx="940" cy="492" r="9" fill="#212121" stroke="#555" stroke-width="1"/>
+<text x="960" y="498" font-size="17" fill="#212121" font-weight="normal" text-anchor="start">39, 41, 42 = GND</text>
+<circle cx="940" cy="522" r="9" fill="#c62828" stroke="#555" stroke-width="1"/>
+<text x="960" y="528" font-size="17" fill="#212121" font-weight="normal" text-anchor="start">45 = 5 V – NUR über 1 kΩ an 20 (Nr. 9);  übrige rote = 5 V, nie benutzen</text>
+<text x="920" y="554" font-size="16" fill="#333" font-weight="normal" text-anchor="start">Andere Breakouts zählen evtl. gegenläufig – zuerst GND- und 5-V-Block messen (Abschnitt 3.3).</text>
+<rect x="40" y="610" width="1720" height="860" rx="10" fill="white" stroke="#555" stroke-width="2"/>
+<text x="60" y="650" font-size="22" fill="#212121" font-weight="bold" text-anchor="start">C  Leitungsplan – jede Zeile ist eine Verbindung (Ende A ↔ Ende B)</text>
+<text x="330" y="690" font-size="19" fill="#1565c0" font-weight="bold" text-anchor="middle">Raspberry Pi / IO-Board</text>
+<text x="1050" y="690" font-size="19" fill="#2e7d32" font-weight="bold" text-anchor="middle">Breakout-Stift</text>
+<text x="1560" y="690" font-size="19" fill="#6a1b9a" font-weight="bold" text-anchor="middle">USB-RS485-Adapter</text>
+<text x="70" y="747" font-size="22" fill="#212121" font-weight="bold" text-anchor="start">1</text>
+<polyline points="450,740 930,740" fill="none" stroke="#212121" stroke-width="4"/>
+<rect x="210" y="720" width="240" height="40" rx="8" fill="white" stroke="#212121" stroke-width="3"/>
+<text x="330" y="747" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">Pin 39 (GND)</text>
+<rect x="930" y="720" width="240" height="40" rx="8" fill="white" stroke="#212121" stroke-width="3"/>
+<text x="1050" y="747" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">Stift 39 (GND)</text>
+<text x="1190" y="747" font-size="17" fill="#333" font-weight="normal" text-anchor="start">gemeinsame Masse – zuerst stecken</text>
+<text x="70" y="809" font-size="22" fill="#1565c0" font-weight="bold" text-anchor="start">2</text>
+<polyline points="450,802 930,802" fill="none" stroke="#1565c0" stroke-width="4"/>
+<rect x="210" y="782" width="240" height="40" rx="8" fill="white" stroke="#1565c0" stroke-width="3"/>
+<text x="330" y="809" font-size="18" fill="#1565c0" font-weight="bold" text-anchor="middle">Pin 32 (TXD4)</text>
+<rect x="930" y="782" width="240" height="40" rx="8" fill="white" stroke="#1565c0" stroke-width="3"/>
+<text x="1050" y="809" font-size="18" fill="#1565c0" font-weight="bold" text-anchor="middle">Stift 30</text>
+<rect x="642.0" y="784" width="96" height="36" rx="6" fill="white" stroke="#1565c0" stroke-width="3"/>
+<text x="690.0" y="809" font-size="18" fill="#1565c0" font-weight="bold" text-anchor="middle">1 kΩ</text>
+<polygon points="780.0,802 766.0,794 766.0,810" fill="#1565c0"/>
+<text x="1190" y="809" font-size="17" fill="#333" font-weight="normal" text-anchor="start">Pi sendet → Main-MCU</text>
+<text x="70" y="871" font-size="22" fill="#1565c0" font-weight="bold" text-anchor="start">3</text>
+<polyline points="450,864 930,864" fill="none" stroke="#1565c0" stroke-width="4"/>
+<rect x="210" y="844" width="240" height="40" rx="8" fill="white" stroke="#1565c0" stroke-width="3"/>
+<text x="330" y="871" font-size="18" fill="#1565c0" font-weight="bold" text-anchor="middle">Pin 33 (RXD4)</text>
+<rect x="930" y="844" width="240" height="40" rx="8" fill="white" stroke="#1565c0" stroke-width="3"/>
+<text x="1050" y="871" font-size="18" fill="#1565c0" font-weight="bold" text-anchor="middle">Stift 32</text>
+<rect x="642.0" y="846" width="96" height="36" rx="6" fill="white" stroke="#1565c0" stroke-width="3"/>
+<text x="690.0" y="871" font-size="18" fill="#1565c0" font-weight="bold" text-anchor="middle">1 kΩ</text>
+<polygon points="600.0,864 614.0,856 614.0,872" fill="#1565c0"/>
+<text x="1190" y="871" font-size="17" fill="#333" font-weight="normal" text-anchor="start">Main-MCU → Pi</text>
+<text x="70" y="933" font-size="22" fill="#e65100" font-weight="bold" text-anchor="start">4</text>
+<polyline points="450,926 930,926" fill="none" stroke="#e65100" stroke-width="4"/>
+<rect x="210" y="906" width="240" height="40" rx="8" fill="white" stroke="#e65100" stroke-width="3"/>
+<text x="330" y="933" font-size="18" fill="#e65100" font-weight="bold" text-anchor="middle">Pin 7 (TXD2)</text>
+<rect x="930" y="906" width="240" height="40" rx="8" fill="white" stroke="#e65100" stroke-width="3"/>
+<text x="1050" y="933" font-size="18" fill="#e65100" font-weight="bold" text-anchor="middle">Stift 26</text>
+<rect x="642.0" y="908" width="96" height="36" rx="6" fill="white" stroke="#e65100" stroke-width="3"/>
+<text x="690.0" y="933" font-size="18" fill="#e65100" font-weight="bold" text-anchor="middle">1 kΩ</text>
+<polygon points="780.0,926 766.0,918 766.0,934" fill="#e65100"/>
+<text x="1190" y="933" font-size="17" fill="#333" font-weight="normal" text-anchor="start">Pi sendet → Düsen-MCU</text>
+<text x="70" y="995" font-size="22" fill="#e65100" font-weight="bold" text-anchor="start">5</text>
+<polyline points="450,988 930,988" fill="none" stroke="#e65100" stroke-width="4"/>
+<rect x="210" y="968" width="240" height="40" rx="8" fill="white" stroke="#e65100" stroke-width="3"/>
+<text x="330" y="995" font-size="18" fill="#e65100" font-weight="bold" text-anchor="middle">Pin 29 (RXD2)</text>
+<rect x="930" y="968" width="240" height="40" rx="8" fill="white" stroke="#e65100" stroke-width="3"/>
+<text x="1050" y="995" font-size="18" fill="#e65100" font-weight="bold" text-anchor="middle">Stift 28</text>
+<rect x="642.0" y="970" width="96" height="36" rx="6" fill="white" stroke="#e65100" stroke-width="3"/>
+<text x="690.0" y="995" font-size="18" fill="#e65100" font-weight="bold" text-anchor="middle">1 kΩ</text>
+<polygon points="600.0,988 614.0,980 614.0,996" fill="#e65100"/>
+<text x="1190" y="995" font-size="17" fill="#333" font-weight="normal" text-anchor="start">Düsen-MCU → Pi</text>
+<text x="70" y="1057" font-size="22" fill="#212121" font-weight="bold" text-anchor="start">6</text>
+<polyline points="1170,1050 1440,1050" fill="none" stroke="#212121" stroke-width="4"/>
+<rect x="930" y="1030" width="240" height="40" rx="8" fill="white" stroke="#212121" stroke-width="3"/>
+<text x="1050" y="1057" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">Stift 41 (GND)</text>
+<rect x="1440" y="1030" width="240" height="40" rx="8" fill="white" stroke="#212121" stroke-width="3"/>
+<text x="1560" y="1057" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">GND</text>
+<text x="1190" y="1024" font-size="15" fill="#555" font-weight="normal" text-anchor="start">Masse RS485</text>
+<text x="70" y="1119" font-size="22" fill="#6a1b9a" font-weight="bold" text-anchor="start">7</text>
+<polyline points="1170,1112 1440,1112" fill="none" stroke="#6a1b9a" stroke-width="4"/>
+<rect x="930" y="1092" width="240" height="40" rx="8" fill="white" stroke="#6a1b9a" stroke-width="3"/>
+<text x="1050" y="1119" font-size="18" fill="#6a1b9a" font-weight="bold" text-anchor="middle">Stift 20 (485_A)</text>
+<rect x="1440" y="1092" width="240" height="40" rx="8" fill="white" stroke="#6a1b9a" stroke-width="3"/>
+<text x="1560" y="1119" font-size="18" fill="#6a1b9a" font-weight="bold" text-anchor="middle">A+</text>
+<text x="1190" y="1086" font-size="15" fill="#555" font-weight="normal" text-anchor="start">RS485 A</text>
+<text x="70" y="1181" font-size="22" fill="#6a1b9a" font-weight="bold" text-anchor="start">8</text>
+<polyline points="1170,1174 1440,1174" fill="none" stroke="#6a1b9a" stroke-width="4"/>
+<rect x="930" y="1154" width="240" height="40" rx="8" fill="white" stroke="#6a1b9a" stroke-width="3"/>
+<text x="1050" y="1181" font-size="18" fill="#6a1b9a" font-weight="bold" text-anchor="middle">Stift 19 (485_B)</text>
+<rect x="1440" y="1154" width="240" height="40" rx="8" fill="white" stroke="#6a1b9a" stroke-width="3"/>
+<text x="1560" y="1181" font-size="18" fill="#6a1b9a" font-weight="bold" text-anchor="middle">B−</text>
+<text x="1190" y="1148" font-size="15" fill="#555" font-weight="normal" text-anchor="start">RS485 B</text>
+<text x="70" y="1243" font-size="22" fill="#212121" font-weight="bold" text-anchor="start">11</text>
+<polyline points="450,1236 1440,1236" fill="none" stroke="#212121" stroke-width="4" stroke-dasharray="10,6"/>
+<rect x="210" y="1216" width="240" height="40" rx="8" fill="white" stroke="#212121" stroke-width="3"/>
+<text x="330" y="1243" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">USB-A-Buchse</text>
+<rect x="1440" y="1216" width="240" height="40" rx="8" fill="white" stroke="#212121" stroke-width="3"/>
+<text x="1560" y="1243" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">USB-Stecker</text>
+<text x="945.0" y="1222" font-size="15" fill="#555" font-weight="normal" text-anchor="middle">Adapter am Pi (USB-Kabel)</text>
+<text x="70" y="1308" font-size="19" fill="#c62828" font-weight="bold" text-anchor="start">Ruhevorspannung des RS485-Busses (beide Enden am Breakout, ohne T113 nötig):</text>
+<text x="70" y="1359" font-size="22" fill="#c62828" font-weight="bold" text-anchor="start">9</text>
+<polyline points="450,1352 930,1352" fill="none" stroke="#c62828" stroke-width="4"/>
+<rect x="210" y="1332" width="240" height="40" rx="8" fill="white" stroke="#c62828" stroke-width="3"/>
+<text x="330" y="1359" font-size="18" fill="#c62828" font-weight="bold" text-anchor="middle">Stift 45 (5 V)</text>
+<rect x="930" y="1332" width="240" height="40" rx="8" fill="white" stroke="#6a1b9a" stroke-width="3"/>
+<text x="1050" y="1359" font-size="18" fill="#6a1b9a" font-weight="bold" text-anchor="middle">Stift 20 (485_A)</text>
+<rect x="642.0" y="1334" width="96" height="36" rx="6" fill="white" stroke="#c62828" stroke-width="3"/>
+<text x="690.0" y="1359" font-size="18" fill="#c62828" font-weight="bold" text-anchor="middle">1 kΩ</text>
+<text x="1190" y="1359" font-size="17" fill="#333" font-weight="normal" text-anchor="start">Bus-Ruhepegel A hoch</text>
+<text x="70" y="1421" font-size="22" fill="#c62828" font-weight="bold" text-anchor="start">10</text>
+<polyline points="450,1414 930,1414" fill="none" stroke="#c62828" stroke-width="4"/>
+<rect x="210" y="1394" width="240" height="40" rx="8" fill="white" stroke="#6a1b9a" stroke-width="3"/>
+<text x="330" y="1421" font-size="18" fill="#6a1b9a" font-weight="bold" text-anchor="middle">Stift 19 (485_B)</text>
+<rect x="930" y="1394" width="240" height="40" rx="8" fill="white" stroke="#212121" stroke-width="3"/>
+<text x="1050" y="1421" font-size="18" fill="#212121" font-weight="bold" text-anchor="middle">Stift 42 (GND)</text>
+<rect x="642.0" y="1396" width="96" height="36" rx="6" fill="white" stroke="#c62828" stroke-width="3"/>
+<text x="690.0" y="1421" font-size="18" fill="#c62828" font-weight="bold" text-anchor="middle">1 kΩ</text>
+<text x="1190" y="1421" font-size="17" fill="#333" font-weight="normal" text-anchor="start">Bus-Ruhepegel B tief</text>
+<text x="40" y="1514" font-size="17" fill="#c62828" font-weight="bold" text-anchor="start">• Rote Stifte (Breakout 11, 12, 14, 15, 17, 45–50; Pi 2/4) nie anschließen – einzige Ausnahme Nr. 9 über 1 kΩ. Der Pi bekommt Strom NUR vom eigenen Netzteil.</text>
+<text x="40" y="1544" font-size="17" fill="#212121" font-weight="normal" text-anchor="start">• IO-Board: Schalter IO-VREF auf 3,3 V. USB-C: Netzteil 5 V / 5 A, eigene Steckdose. Adapter: nur RS485-Klemmen, eingebauten 120-Ω-Abschluss AUS.</text>
+<text x="40" y="1574" font-size="17" fill="#212121" font-weight="normal" text-anchor="start">• Zeigte Breakout-Stift 28 oder 32 beim Messen ≈ 5 V: zusätzlich 2 kΩ vom Pi-seitigen Ende des 1-kΩ-Widerstands (Nr. 3 bzw. 5) nach GND.</text>
+<text x="40" y="1604" font-size="17" fill="#2e7d32" font-weight="bold" text-anchor="start">• Einschalten: Drucker an → 30 s warten → Pi-Netzteil rein.   Ausschalten: Pi herunterfahren → Pi-Netzteil ziehen → Drucker aus.</text>
+</svg>

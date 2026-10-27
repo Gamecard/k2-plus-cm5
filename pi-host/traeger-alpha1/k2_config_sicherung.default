@@ -1,0 +1,7 @@
+# K2-CM5-Traeger Alpha 1: Einstellungen k2_config_sicherung.sh
+# Ziel: /etc/default/k2_config_sicherung (wird nicht ueberschrieben)
+#K2_BENUTZER=<klipper-benutzer>
+K2_SICHERUNG_ZIEL=/daten/sicherung/config
+K2_SICHERUNG_ANZAHL=30
+# VORLAGE Kopie auf einen PC (ssh-Schluessel ohne Passwort fuer root noetig):
+#K2_SICHERUNG_RSYNC_ZIEL=<pc-benutzer>@<pc-name>:<zielordner>/

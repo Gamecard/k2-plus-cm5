@@ -1,0 +1,612 @@
+{
+ "USB_C_Buchse_stehend_16P_TYPE-C-16P-LTH6.8": {
+  "lcsc": "C5187468",
+  "hoehe": 6.8,
+  "bemerkung": "SHOU HAN TYPE-C 16P LTH6.8, stehend, H = 6,8 mm (Datenblatt-Tabelle)",
+  "pads": [
+   {
+    "nummer": "B1",
+    "form": "rect",
+    "x": 2.75,
+    "y": 0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "B4",
+    "form": "rect",
+    "x": 1.25,
+    "y": 0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "B5",
+    "form": "rect",
+    "x": 0.75,
+    "y": 0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "B6",
+    "form": "rect",
+    "x": 0.25,
+    "y": 0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "B7",
+    "form": "rect",
+    "x": -0.25,
+    "y": 0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "B8",
+    "form": "rect",
+    "x": -0.75,
+    "y": 0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "B9",
+    "form": "rect",
+    "x": -1.25,
+    "y": 0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "A12",
+    "form": "rect",
+    "x": 2.75,
+    "y": -0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "A9",
+    "form": "rect",
+    "x": 1.25,
+    "y": -0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "A8",
+    "form": "rect",
+    "x": 0.75,
+    "y": -0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "A7",
+    "form": "rect",
+    "x": 0.25,
+    "y": -0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "A6",
+    "form": "rect",
+    "x": -0.25,
+    "y": -0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "A5",
+    "form": "rect",
+    "x": -0.75,
+    "y": -0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "A4",
+    "form": "rect",
+    "x": -1.25,
+    "y": -0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "B12",
+    "form": "rect",
+    "x": -2.75,
+    "y": 0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "A1",
+    "form": "rect",
+    "x": -2.75,
+    "y": -0.865,
+    "sx": 0.3,
+    "sy": 0.87,
+    "tht": false
+   },
+   {
+    "nummer": "SH",
+    "form": "oval",
+    "x": 2.4001,
+    "y": 2.1501,
+    "sx": 1.5,
+    "sy": 1.2,
+    "tht": true,
+    "bohrung": [
+     1.0,
+     0.6096
+    ]
+   },
+   {
+    "nummer": "SH",
+    "form": "oval",
+    "x": -2.3999,
+    "y": 2.1501,
+    "sx": 1.5,
+    "sy": 1.2,
+    "tht": true,
+    "bohrung": [
+     1.0,
+     0.6096
+    ]
+   },
+   {
+    "nummer": "SH",
+    "form": "oval",
+    "x": 2.4001,
+    "y": -2.1502,
+    "sx": 1.5,
+    "sy": 1.2,
+    "tht": true,
+    "bohrung": [
+     1.0,
+     0.6096
+    ]
+   },
+   {
+    "nummer": "SH",
+    "form": "oval",
+    "x": -2.3999,
+    "y": -2.1502,
+    "sx": 1.5,
+    "sy": 1.2,
+    "tht": true,
+    "bohrung": [
+     1.0,
+     0.6096
+    ]
+   }
+  ],
+  "loecher": [
+   {
+    "x": 3.7502,
+    "y": -0.0001,
+    "d": 0.8
+   },
+   {
+    "x": -3.75,
+    "y": -0.0001,
+    "d": 0.6
+   }
+  ],
+  "umriss": {
+   "x": 0.0,
+   "y": 0.0,
+   "b": 8.94,
+   "t": 4.6,
+   "dreh": "0,0,0"
+  }
+ },
+ "Texas_RUX_VQFN-HR-12_2x2.5mm_P0.5mm": {
+  "lcsc": "C485916",
+  "hoehe": 1.0,
+  "bemerkung": "TI TPS2121RUXR, VQFN-HR-12",
+  "pads": [
+   {
+    "nummer": "1",
+    "form": "rect",
+    "x": -0.3501,
+    "y": 0.675,
+    "sx": 0.4,
+    "sy": 1.05,
+    "tht": false
+   },
+   {
+    "nummer": "2",
+    "form": "oval",
+    "x": 0.3499,
+    "y": 0.6749,
+    "sx": 0.4,
+    "sy": 1.05,
+    "tht": false
+   },
+   {
+    "nummer": "7",
+    "form": "oval",
+    "x": 0.3499,
+    "y": -0.6751,
+    "sx": 0.4,
+    "sy": 1.05,
+    "tht": false
+   },
+   {
+    "nummer": "8",
+    "form": "oval",
+    "x": -0.3501,
+    "y": -0.6751,
+    "sx": 0.4,
+    "sy": 1.05,
+    "tht": false
+   },
+   {
+    "nummer": "3",
+    "form": "oval",
+    "x": 1.15,
+    "y": 0.7501,
+    "sx": 0.6,
+    "sy": 0.2,
+    "tht": false
+   },
+   {
+    "nummer": "4",
+    "form": "oval",
+    "x": 1.15,
+    "y": 0.2499,
+    "sx": 0.6,
+    "sy": 0.2,
+    "tht": false
+   },
+   {
+    "nummer": "5",
+    "form": "oval",
+    "x": 1.15,
+    "y": -0.2499,
+    "sx": 0.6,
+    "sy": 0.2,
+    "tht": false
+   },
+   {
+    "nummer": "6",
+    "form": "oval",
+    "x": 1.15,
+    "y": -0.7501,
+    "sx": 0.6,
+    "sy": 0.2,
+    "tht": false
+   },
+   {
+    "nummer": "9",
+    "form": "oval",
+    "x": -1.15,
+    "y": -0.7501,
+    "sx": 0.6,
+    "sy": 0.2,
+    "tht": false
+   },
+   {
+    "nummer": "10",
+    "form": "oval",
+    "x": -1.15,
+    "y": -0.2499,
+    "sx": 0.6,
+    "sy": 0.2,
+    "tht": false
+   },
+   {
+    "nummer": "11",
+    "form": "oval",
+    "x": -1.15,
+    "y": 0.2499,
+    "sx": 0.6,
+    "sy": 0.2,
+    "tht": false
+   },
+   {
+    "nummer": "12",
+    "form": "oval",
+    "x": -1.15,
+    "y": 0.7501,
+    "sx": 0.6,
+    "sy": 0.2,
+    "tht": false
+   }
+  ],
+  "loecher": [],
+  "umriss": {
+   "x": -0.0001,
+   "y": -0.0001,
+   "b": 2.0,
+   "t": 2.5,
+   "dreh": "0,0,90"
+  }
+ },
+ "Uebertrager_SMD_H1102NLT_12.7x7.1mm": {
+  "lcsc": "C18584",
+  "hoehe": 6.35,
+  "bemerkung": "Pulse H1102NLT, 10/100-Übertrager SMD 16-pol.",
+  "pads": [
+   {
+    "nummer": "1",
+    "form": "rect",
+    "x": -4.445,
+    "y": 4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "2",
+    "form": "rect",
+    "x": -3.175,
+    "y": 4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "3",
+    "form": "rect",
+    "x": -1.905,
+    "y": 4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "4",
+    "form": "rect",
+    "x": -0.635,
+    "y": 4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "5",
+    "form": "rect",
+    "x": 0.635,
+    "y": 4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "6",
+    "form": "rect",
+    "x": 1.905,
+    "y": 4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "7",
+    "form": "rect",
+    "x": 3.175,
+    "y": 4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "8",
+    "form": "rect",
+    "x": 4.445,
+    "y": 4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "9",
+    "form": "rect",
+    "x": 4.445,
+    "y": -4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "10",
+    "form": "rect",
+    "x": 3.175,
+    "y": -4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "11",
+    "form": "rect",
+    "x": 1.905,
+    "y": -4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "12",
+    "form": "rect",
+    "x": 0.635,
+    "y": -4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "13",
+    "form": "rect",
+    "x": -0.635,
+    "y": -4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "14",
+    "form": "rect",
+    "x": -1.905,
+    "y": -4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "15",
+    "form": "rect",
+    "x": -3.175,
+    "y": -4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   },
+   {
+    "nummer": "16",
+    "form": "rect",
+    "x": -4.445,
+    "y": -4.318,
+    "sx": 0.76,
+    "sy": 1.6601,
+    "tht": false
+   }
+  ],
+  "loecher": [],
+  "umriss": {
+   "x": 0.0,
+   "y": 0.0,
+   "b": 12.7,
+   "t": 9.53,
+   "dreh": "0,0,0"
+  }
+ },
+ "MicroFit3.0_2x2_liegend_HC-MX3.0-2x2AW": {
+  "lcsc": "C3294383",
+  "hoehe": 8.76,
+  "bemerkung": "Micro-Fit-3.0-kompatibel 2x2 liegend (HCTL)",
+  "pads": [
+   {
+    "nummer": "1",
+    "form": "rect",
+    "x": 1.5,
+    "y": 1.5,
+    "sx": 2.0,
+    "sy": 2.0,
+    "tht": true,
+    "bohrung": [
+     1.2,
+     1.2
+    ]
+   },
+   {
+    "nummer": "2",
+    "form": "circle",
+    "x": 1.5,
+    "y": -1.5,
+    "sx": 2.0,
+    "sy": 2.0,
+    "tht": true,
+    "bohrung": [
+     1.2,
+     1.2
+    ]
+   },
+   {
+    "nummer": "3",
+    "form": "circle",
+    "x": -1.5,
+    "y": 1.5,
+    "sx": 2.0,
+    "sy": 2.0,
+    "tht": true,
+    "bohrung": [
+     1.2,
+     1.2
+    ]
+   },
+   {
+    "nummer": "4",
+    "form": "circle",
+    "x": -1.5,
+    "y": -1.5,
+    "sx": 2.0,
+    "sy": 2.0,
+    "tht": true,
+    "bohrung": [
+     1.2,
+     1.2
+    ]
+   }
+  ],
+  "loecher": [
+   {
+    "x": 0.0001,
+    "y": 5.82,
+    "d": 3.0
+   }
+  ],
+  "umriss": {
+   "x": 0.0,
+   "y": 4.3,
+   "b": 9.601,
+   "t": 12.24,
+   "dreh": "0,0,0"
+  }
+ },
+ "Stiftleiste_1x2_P2.54mm_SMD_stehend": {
+  "lcsc": "C41417359",
+  "hoehe": 8.5,
+  "bemerkung": "HX PZ2.54-1x2P TP-YQ, SMD stehend",
+  "pads": [
+   {
+    "nummer": "1",
+    "form": "rect",
+    "x": -1.27,
+    "y": -1.8,
+    "sx": 1.27,
+    "sy": 2.2,
+    "tht": false
+   },
+   {
+    "nummer": "2",
+    "form": "rect",
+    "x": 1.27,
+    "y": 1.8,
+    "sx": 1.27,
+    "sy": 2.2,
+    "tht": false
+   }
+  ],
+  "loecher": [],
+  "umriss": {
+   "x": 0.0,
+   "y": 0.149,
+   "b": 5.08,
+   "t": 5.0,
+   "dreh": "0,0,0"
+  }
+ }
+}

@@ -1,0 +1,11 @@
+# K2-CM5-Traeger Alpha 1: Sicherung printer_data/config (gestartet vom Timer)
+# Ziel: /etc/systemd/system/k2-config-sicherung.service (install-traeger.sh)
+[Unit]
+Description=K2-Traeger: Sicherung der Klipper-Konfiguration
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/k2_config_sicherung.sh
+Nice=19
+IOSchedulingClass=idle

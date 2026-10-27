@@ -1,0 +1,2 @@
+Quelle: gitstonelabs/creality-cfs-klipper (GPL-3.0), tests/test_data/.
+Lokale Kopie nur als Validierungsvektoren für serial485.py.

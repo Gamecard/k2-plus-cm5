@@ -1,0 +1,56 @@
+** Drc report for k2-cm5-traeger.kicad_pcb **
+** Created on 2026-10-24T17:43:54 **
+** Report includes: Errors, Warnings, Exclusions **
+
+** Found 12 DRC violations **
+[lib_footprint_mismatch]: Footprint "R_2512_6332Metric" stimmt nicht mit Kopie in Bibliothek "Resistor_SMD" überein.
+    Local override; warning
+    @(56.8500 mm, 52.2000 mm): Footprint R23
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(99.1000 mm, 88.9000 mm): Via [PMIC_EN] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(82.7000 mm, 89.5000 mm): Via [ETH_NLED2] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(43.8000 mm, 75.6000 mm): Via [RS485_A] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(81.9000 mm, 88.9000 mm): Via [ETH_NLED3] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(99.1000 mm, 84.0200 mm): Via [CAM_GPIO1] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(86.3000 mm, 83.4200 mm): Via [DSI_SDA] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(84.3000 mm, 84.0200 mm): Via [UART4_RX] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(89.9000 mm, 83.4200 mm): Via [UART2_TX] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(89.9000 mm, 89.5000 mm): Via [UART0_TX] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(97.1000 mm, 84.0200 mm): Via [PWR_BUT] auf F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(99.1000 mm, 82.8200 mm): Via [CC2_CM5] auf F.Cu - B.Cu
+
+** Found 0 unconnected pads **
+
+** Found 0 Footprint errors **
+
+** Ignored checks **
+    - Footprint has no courtyard defined
+    - Track endpoint not centered on via
+    - Tuning profile track geometries
+    - Footprint doesn't match symbol's footprint filters
+    - PTH inside courtyard
+    - NPTH inside courtyard
+    - Footprint component type doesn't match footprint pads
+
+** End of Report **

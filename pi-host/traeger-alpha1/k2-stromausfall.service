@@ -1,0 +1,24 @@
+# K2-CM5-Traeger Alpha 1: Stromausfall-Waechter (INA226 0x40 ALERT -> GPIO27)
+# Ziel: /etc/systemd/system/k2-stromausfall.service (install-traeger.sh)
+# Laeuft als root (cgroup-freeze, mount, I2C, GPIO). Startet vor Klipper.
+[Unit]
+Description=K2-Traeger: Stromausfall-Waechter (PWR_FAIL_N an GPIO27)
+After=local-fs.target systemd-modules-load.service
+Before=klipper.service moonraker.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/k2_stromausfall
+ExecStart=/usr/bin/python3 -B /usr/local/sbin/k2_stromausfall.py
+Restart=always
+RestartSec=2
+# schnell reagieren, nie vom OOM-Killer beendet
+Nice=-15
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=40
+OOMScoreAdjust=-900
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
