@@ -3,9 +3,9 @@
 > **ALPHA – NUR FÜR TESTZWECKE – NICHT FÜR DEN KOMMERZIELLEN EINSATZ – NUTZUNG AUF EIGENE GEFAHR.**
 > Lizenz und Haftungsausschluss: siehe [`../LIZENZ-UND-HAFTUNG.md`](../LIZENZ-UND-HAFTUNG.md).
 
-> **Status: Alpha 1 – Layout vollständig geroutet, DRC/ERC 0 Fehler, alle Wächter grün; noch nicht gefertigt und nicht
-> am Drucker geprüft.** Vor einer Bestellung die offenen Punkte am Ende abarbeiten (Pinbelegungen der Stecker gegenüber
-> den Kabeln, Impedanz-Rechner, 0,2-mm-Bohrungen, Abstandshalter des CM5).
+> **Status (29.10.2026): Alpha 1 – Layout vollständig geroutet, DRC/ERC 0 Fehler, alle Wächter grün; Fertigungsdaten
+> (Leiterplatte und Bestückung) zur Fertigung freigegeben, am Drucker noch nicht geprüft.** Was vor der Fertigung zu
+> klären war, ist erledigt; offen sind vor allem Prüfungen am ersten Muster – siehe [Offene Punkte](#offene-punkte) am Ende.
 
 > **Unterlagen:** [Fertigungshinweise](#fertigungshinweise-leiterplatte-und-bestückung) · [`EINKAUFSLISTE.md`](EINKAUFSLISTE.md) (alles außer JLC) · [`AUFBAU-UND-INBETRIEBNAHME.md`](AUFBAU-UND-INBETRIEBNAHME.md)
 > (Messungen in 12 Etappen) · [`KOMPROMISSE-UND-OFFENE-PUNKTE.md`](KOMPROMISSE-UND-OFFENE-PUNKTE.md) · Software:
@@ -170,7 +170,7 @@ USB 90 Ω = 0,25/0,15 mm, Ethernet und DSI 100 Ω = 0,20/0,20 mm. Längenabgleic
     **I²t = C·U²/(2R) ≈ 20 µF · (24 V)² / (2 · 0,1 Ω) ≈ 0,06 A²s** (mit Nenn-C, real ≈ 0,03 A²s). Der LMR51450 startet mit
     internem Softstart; die ≈ 160 µF hinter dem Wandler (5,2 V) laden dabei langsam – Eingangsstrom < 0,2 A, für die
     Sicherung unerheblich. Das Schmelz-I²t einer 3-A-Nano²-Sicherung liegt in der Größenordnung einiger Zehntel A²s
-    (**vor der Bestellung im Littelfuse-Datenblatt 453 bestätigen**); die Einschaltspitze nutzt damit nur einen kleinen
+    (laut Littelfuse-Datenblatt der Serie 453: **1,65 A²s**, siehe [`KOMPROMISSE-UND-OFFENE-PUNKTE.md`](KOMPROMISSE-UND-OFFENE-PUNKTE.md) G2); die Einschaltspitze nutzt damit nur einen kleinen
     Bruchteil (Littelfuse-Faustregel für ≈ 100 000 Schaltspiele: Puls-I²t ≤ ≈ 22 % des Schmelz-I²t).
   - Kleiner (2 A) wäre bei Volllast des CM5 knapp (75 % = 1,5 A), größer (4–5 A) schützt die schmalen Bahnen hinter dem
     Shunt schlechter. → **3 A flink passt**; wer trotzdem träge will (z. B. häufiges Stecken unter Spannung), steckt die
@@ -207,7 +207,7 @@ USB 90 Ω = 0,25/0,15 mm, Ethernet und DSI 100 Ω = 0,20/0,20 mm. Längenabgleic
 | Jumper | Funktion | ab Werk |
 |---|---|---|
 | JP_BOOT (Stiftleiste) | nRPIBOOT – Jumper stecken = CM5 startet in rpiboot (USB-Boot über J10) | **offen** (kein Jumper) |
-| JP_CAN_TERM (Stiftleiste) | CAN-Abschluss 120 Ω | **gesteckt** |
+| JP_CAN_TERM (Stiftleiste) | CAN-Abschluss 120 Ω | **gesteckt** – Achtung: Der Bestücker steckt keine Jumper-Kappen; die Kappe vor der Inbetriebnahme von Hand stecken (Alpha 2: ab Werk geschlossene Lötbrücke, siehe Offene Punkte E) |
 | JP_485_TERM (Stiftleiste) | RS485-Abschluss 120 Ω | **offen** |
 | JP2/JP3 (Lötbrücke) | RS485-Ruhevorspannung A/B | geschlossen |
 | JP5 (Lötbrücke) | 5-V-Notversorgung über USB-C in den Power-Mux | geschlossen |
@@ -368,48 +368,86 @@ Nur Darstellung – Lötflächen, Prüfungen und der Höhen-Wächter (Datenblatt
 
 ## Offene Punkte
 
-1. **Impedanz** mit dem JLC-Rechner für JLC04161H-7628 bestätigen (USB 90 Ω 0,25/0,15; Ethernet/DSI 100 Ω 0,20/0,20 –
-   hier nur nach IPC-2141 genähert).
-2. **0,2-mm-Bohrungen:** 12 Vias haben 0,2 mm Bohrung (10 × Ø 0,6 mm, 2 × Ø 0,5 mm; Restring der beiden 0,5er = 0,15 mm =
-   JLC-Minimum). Laut JLC-Preisregel ohne Aufpreis, da Durchmesser > 0,45 mm.
-3. **Pinbelegungen der Kabel:** XT30-Polarität J7 – **seit 24.10.2026 Pin 2 = +24 V, Pin 1 = GND**, passend zu den
+Stand 29.10.2026: Die Fertigungsdaten (Leiterplatte und Bestückung) sind zur Fertigung freigegeben. Alles, was **vor**
+der Fertigung zu klären war, ist erledigt (A). Offen sind vor allem Prüfungen, die erst mit der bestückten Platine
+möglich sind (B) – sie sind in [`AUFBAU-UND-INBETRIEBNAHME.md`](AUFBAU-UND-INBETRIEBNAHME.md) den Mess-Etappen
+zugeordnet. Begründungen und Quellen ausführlich: [`KOMPROMISSE-UND-OFFENE-PUNKTE.md`](KOMPROMISSE-UND-OFFENE-PUNKTE.md).
+
+### A. Erledigt (vor der Fertigung)
+
+1. **Impedanz** (Lagenaufbau JLC04161H-7628): Der Impedanzrechner des Herstellers ergibt für die USB-Paare
+   (0,25 mm Breite / 0,15 mm Abstand) **89,4 Ω** (Ziel 90 Ω) und für die Ethernet- und DSI-Paare (0,20/0,20 mm)
+   **104,3 Ω** (Ziel 100 Ω) – beide innerhalb der Toleranz von ±10 %. Die Leiterbahnen bleiben, wie sie sind.
+2. **0,2-mm-Bohrungen:** 12 Vias haben 0,2 mm Bohrung (10 × Ø 0,6 mm, 2 × Ø 0,5 mm; Restring der beiden 0,5er = 0,15 mm
+   = Minimum des Herstellers). Kein Aufpreis, weil der Via-Durchmesser über 0,45 mm liegt; in den Fertigungsdaten
+   unverändert übernommen.
+3. **Übertrager H1102NL:** Pinbelegung und Footprint gegen das Datenblatt geprüft – passt (Paar 0 ist invertiert, für
+   Ethernet unkritisch; Details G1). Die Lage von Pin 1 ist zusätzlich im Bestückungsbild kontrolliert.
+4. **Sicherung F1:** Das Schmelz-I²t der bestückten flinken 3-A-Sicherung (Littelfuse Serie 453) beträgt laut Datenblatt
+   **1,65 A²s**. Der Einschaltpuls beim Stecken unter Spannung (≈ 0,03–0,06 A²s, siehe „24-V-Eingang“) nutzt davon nur
+   **2–4 %** – weit unter der Grenze von 22 % für 100 000 Schaltspiele. Die flinke Sicherung passt (Details G2); die
+   träge 0452003.MRL (C99550) bleibt Ersatz, falls sie doch beim Stecken auslöst.
+5. **Bestückungsbild:** Pin 1 bzw. Polung aller gepolten Teile (Dioden, LEDs, ICs, Stecker; Unterseite gespiegelt) gegen
+   die Pad-1-Lage im KiCad-Layout geprüft – ohne Befund. Alle Teile werden bestückt; XT30 J7 wird wellengelötet.
+6. **Trennung aus dem Nutzen:** Die Fertigungsränder werden **nicht** per V-Cut, sondern über gefräste Schlitze mit
+   „Mouse Bites“ (Stege mit kleinen Bohrungen) abgetrennt; die Stege liegen ≥ 5 mm von den stehenden Steckern an der
+   Kante (J9b, J10, J11). Grund: Beim Abbrechen einer V-Cut-Kante könnten diese Stecker beschädigt werden.
+
+### B. Am ersten Muster prüfen
+
+1. **Pinbelegungen der Kabel:** XT30-Polarität J7 – **seit 24.10.2026 Pin 2 = +24 V, Pin 1 = GND**, passend zu den
    „+“/„−“-Zeichen des KiCad-Footprints (nach Amass-Datenblatt XT30PW-M); vorher war Pin 1 = +24 V gesetzt, der
-   Footprint-Siebdruck zeigte aber „−“ an Pin 1 (Widerspruch, jetzt behoben; „24V“/„GND“ stehen neben „+“/„−“). Am
-   Muster mit dem Gehäuse-Aufdruck des Steckers vergleichen. JST-GH J9b (CAN zum Toolhead-Board) und J11 gegen die
-   Gegenkabel prüfen. **Achtung:**
-   bei der stehenden GH-Variante liegt Pin 1 räumlich auf der anderen Seite als bei der liegenden (Siebdruck „H L G“ an
-   J9b bzw. „G B A“ an J11 gibt die Reihenfolge von links nach rechts an).
-4. **DSI:** Kontaktseite/Pin 1 am Muster mit dem Pi-5-Displaykabel kontrollieren (gleicher Stecker wie CM4-IO, also
-   erwartet passend); `dtoverlay=vc4-kms-dsi-7inch` am CM5 testen (I2C ID_SD/ID_SC); D2/D3 nicht verlegt.
-   Die Lage von CON1 an der T113 ist nicht vermessen – J12 sitzt mittig an Kante C (y 22,1–39,2); bei Bedarf Kabellänge prüfen.
-5. **Übertrager H1102NL:** Pinbelegung gegen das Datenblatt (Standard-Belegung wie PT61017) beim Bestücken prüfen.
-6. **CM5-Montage:** Abstandshalter Ø ≤ 4,5 mm, Schrauben mit flachem Kopf (≤ 5,5 mm Ø unten), Kühlkörper inkl. Pad ≤ 4,96 mm.
-7. **J10 (USB-C stehend):** Erreichbarkeit im Gehäuse prüfen (Stecker von oben, Gehäuse offen).
-8. **Spiegelfall USB:** 5-V-Signal/GND auf den USB-Leitungen bei verdrehtem Flachkabel – Kurzschlussfestigkeit laut USB 2.0
-   erwartet, am Muster prüfen.
-9. **Sicherung F1 (Weg A):** Bestand des Halters **0157003.DR (C187520)** vor der Bestellung prüfen (zuletzt ≈ 1 500);
-   **Schmelz-I²t der 3-A-Sicherung (Serie 453) im Littelfuse-Datenblatt bestätigen** (Abschätzung der Einschaltspitze
-   ≈ 0,03–0,06 A²s, siehe „24-V-Eingang“). Fliegt die flinke Sicherung beim Stecken unter Spannung, träge 0452003.MRL
-   (C99550) einsetzen. (R32 ohne LCSC-Nummer ist mit der eFuse entfallen.)
-10. **Kompromisse dieses Entwurfs** (bewusst, dokumentiert): D3 (USB-ESD an J10) mit offenem VBUS-Pin wie D1/D2; INA226 U5
-    misst VBUS direkt an IN− (R21-Filter entfallen); L3 als 3,3-V-Fläche mit festen 5-V-Bahnen (Freerouting nur L1/L4);
-    INA226-/Leistungsnetze im Router 0,25 mm breit (Strom über Kupferflächen); THT-Teil J7 von Hand oder per
-    JLC-THT löten; Steckbrücken JP_BOOT/JP_CAN_TERM/JP_485_TERM als stehende SMD-Stiftleisten (8,5 mm).
-11. **Kompromisse des Umbaus 24.10.2026:**
-    - ~~J9 (Toolhead) an Kante C, Toolhead-Strom ≈ 5 A über den L3-Stamm quer über die Platine~~ – **mit Weg A
-      (24.10.2026) erledigt**: J9/eFuse entfallen, der Toolhead wird direkt vom Netzteil versorgt, der L3-Stamm führt nur
-      noch ≈ 0,6 A zum Wandler.
-    - Das Kamera-USB-Paar (J1 37/38 → CM5 134/136) läuft jetzt unter F1 hindurch östlich an J7 vorbei (x 8,8);
-      Längenabgleich wie bisher (Paar-Wächter).
-    - Die Eingangsvias liegen unter dem Halterkörper bzw. dicht daneben (tented).
-13. **Weg A – Nachzüge:** Toolhead-Kabel (24 V vom Netzteil mit Kabelsicherung ≈ 5 A + CAN-Kabel an J9b) konfektionieren;
-    GPIO6/GPIO26 sind frei (Software: kein `[power]`-Gerät mehr für den Toolhead).
-14. **3D-Modelle:** Die LCSC/EasyEDA-Modelle stehen nur lokal zur Verfügung (Lizenz ungeklärt). Der CM5 bleibt eine
-    halbtransparente Hülle; ein offizielles CM5-Modell (Raspberry Pi) bei Gelegenheit nachtragen.
-12. **Supercap-Puffer (Nachtrag 2) – NICHT umgesetzt, nur gemeldet:** 2 × 10 F / 2,7 V (Ø 10 × 30 mm liegend) passen
-    nicht: Außerhalb des CM5 gibt es oben keine freie Fläche ≥ 31 × 21 mm (größte freie Flächen ≈ 17 × 9 mm zwischen
-    JP_BOOT und der Spule, ≈ 8 × 14 mm rechts oben), und liegend wären sie mit 10 mm + 1,6 mm Platine höher als 11,5 mm.
-    Außerdem reicht die Energie ohne Hochsetzsteller kaum: 5 F zwischen 5,2 V und 4,75 V (Mindestspannung CM5) liefern
-    nur ≈ 11 J → bei 5–8 W ≈ 1,5–2 s statt 3 s. Sinnvoller wäre ein externes Puffermodul oder ein Hochsetzsteller hinter
-    den Supercaps. Die Stromausfall-Erkennung (PWR_FAIL_N) funktioniert auch ohne Puffer (Warnung, solange die 24 V
-    noch sinken).
+   Footprint-Siebdruck zeigte aber „−“ an Pin 1 (Widerspruch, behoben; „24V“/„GND“ stehen neben „+“/„−“). Am Muster
+   mit dem Gehäuse-Aufdruck des Steckers vergleichen, **bevor** 24 V angelegt werden. JST-GH J9b (CAN zum Toolhead-Board)
+   und J11 gegen die Gegenkabel prüfen. **Achtung:** Bei der stehenden GH-Variante liegt Pin 1 räumlich auf der
+   anderen Seite als bei der liegenden (Siebdruck „H L G“ an J9b bzw. „G B A“ an J11 gibt die Reihenfolge von links
+   nach rechts an).
+2. **DSI:** Kontaktseite/Pin 1 mit dem Pi-5-Displaykabel kontrollieren (gleicher Stecker wie CM4-IO, also erwartet
+   passend); `dtoverlay=vc4-kms-dsi-7inch` am CM5 testen (I2C ID_SD/ID_SC); D2/D3 nicht verlegt. Die Lage von CON1 an der
+   T113 ist nicht vermessen – J12 sitzt mittig an Kante C (y 22,1–39,2); bei Bedarf Kabellänge prüfen.
+3. **CM5-Montage:** Abstandshalter Ø ≤ 4,5 mm, Schrauben mit flachem Kopf (≤ 5,5 mm Ø unten), Kühlkörper inkl.
+   Wärmeleitpad ≤ 4,96 mm hoch.
+4. **J10 (USB-C stehend):** Erreichbarkeit im Gehäuse prüfen (Stecker von oben, Gehäuse offen).
+5. **Spiegelfall USB:** 5-V-Signal/GND auf den USB-Leitungen bei verdreht gestecktem Flachkabel – Kurzschlussfestigkeit
+   laut USB 2.0 erwartet, am Muster prüfen.
+6. **JP_CAN_TERM:** Jumper-Kappe von Hand stecken (der Bestücker steckt keine), sonst fehlt der CAN-Abschluss 120 Ω.
+
+### C. Außerhalb der Platine noch zu erledigen
+
+1. **Weg A – Nachzüge:** Toolhead-Kabel (24 V vom Netzteil mit Kabelsicherung ≈ 5 A + CAN-Kabel an J9b) konfektionieren;
+   GPIO6/GPIO26 sind frei (Software: kein `[power]`-Gerät mehr für den Toolhead).
+2. **3D-Modelle:** Die LCSC/EasyEDA-Modelle stehen nur lokal zur Verfügung (Lizenz ungeklärt). Der CM5 bleibt eine
+   halbtransparente Hülle; ein offizielles CM5-Modell (Raspberry Pi) bei Gelegenheit nachtragen.
+
+### D. Bewusste Kompromisse (keine offenen Punkte, nur zur Erinnerung)
+
+1. **Kompromisse dieses Entwurfs:** D3 (USB-ESD an J10) mit offenem VBUS-Pin wie D1/D2; INA226 U5 misst VBUS direkt an
+   IN− (R21-Filter entfallen); L3 als 3,3-V-Fläche mit festen 5-V-Bahnen (Freerouting nur L1/L4); INA226-/Leistungsnetze
+   im Router 0,25 mm breit (Strom über Kupferflächen); THT-Teil J7 wellengelötet; Steckbrücken
+   JP_BOOT/JP_CAN_TERM/JP_485_TERM als stehende SMD-Stiftleisten (8,5 mm).
+2. **Kompromisse des Umbaus 24.10.2026:**
+   - ~~J9 (Toolhead) an Kante C, Toolhead-Strom ≈ 5 A über den L3-Stamm quer über die Platine~~ – **mit Weg A
+     (24.10.2026) erledigt**: J9/eFuse entfallen, der Toolhead wird direkt vom Netzteil versorgt, der L3-Stamm führt nur
+     noch ≈ 0,6 A zum Wandler.
+   - Das Kamera-USB-Paar (J1 37/38 → CM5 134/136) läuft unter F1 hindurch östlich an J7 vorbei (x 8,8);
+     Längenabgleich wie bisher (Paar-Wächter).
+   - Die Eingangsvias liegen unter dem Halterkörper bzw. dicht daneben (tented).
+3. **Supercap-Puffer (Nachtrag 2) – NICHT umgesetzt, nur gemeldet:** 2 × 10 F / 2,7 V (Ø 10 × 30 mm liegend) passen
+   nicht: Außerhalb des CM5 gibt es oben keine freie Fläche ≥ 31 × 21 mm (größte freie Flächen ≈ 17 × 9 mm zwischen
+   JP_BOOT und der Spule, ≈ 8 × 14 mm rechts oben), und liegend wären sie mit 10 mm + 1,6 mm Platine höher als 11,5 mm.
+   Außerdem reicht die Energie ohne Hochsetzsteller kaum: 5 F zwischen 5,2 V und 4,75 V (Mindestspannung CM5) liefern
+   nur ≈ 11 J → bei 5–8 W ≈ 1,5–2 s statt 3 s. Sinnvoller wäre ein externes Puffermodul oder ein Hochsetzsteller hinter
+   den Supercaps. Die Stromausfall-Erkennung (PWR_FAIL_N) funktioniert auch ohne Puffer (Warnung, solange die 24 V
+   noch sinken).
+
+### E. Vormerkungen für die nächste Version (Alpha 2)
+
+1. **Lötbrücke statt Stiftleiste** für Optionen, die ab Werk eingeschaltet sein sollen (hier der CAN-Abschluss
+   JP_CAN_TERM): Der Bestücker steckt keine Jumper-Kappen. Eine **ab Werk geschlossene Lötbrücke** (Kupfersteg, wie
+   JP2/JP3 beim RS485) ist sofort aktiv; zum Abschalten den Steg mit einem Cutter durchtrennen, zum Wiedereinschalten
+   Lötzinn darüber. Regel für alle Optionen: ab Werk an → geschlossene Lötbrücke, ab Werk aus → offene Lötbrücke,
+   Stiftleiste nur bei häufigem Umschalten.
+2. **Eigener 3-poliger Konsolen-UART** (GND/TX/RX) für die serielle Konsole des CM5 – passende CM5-Pins vorher klären.
+3. **Stecker weg von den Platinenkanten**, an denen der Hersteller Fertigungsränder anfügt (bei JLC die Seiten der
+   Richtung unter 70 mm), bzw. ≥ 2,5–3 mm Abstand; Nutzen und Trennart (gefräste Schlitze + Mouse Bites) selbst
+   vorgeben statt nur als Hinweis im Auftrag. Am besten als Prüfregel im Generator.

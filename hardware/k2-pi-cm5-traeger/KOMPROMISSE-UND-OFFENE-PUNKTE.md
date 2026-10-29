@@ -4,6 +4,10 @@ Stand 24.10.2026 (Layout „Weg A“). Gesammelt aus `README.md` („Offene Punk
 Toolhead-Versorgung, 3D-Modelle), `KONZEPT.md` (Entscheidungen, Messungen M1–M12, Risiken) und einer Prüfung der
 Fertigungsdaten am 24.10.2026. Jeder Punkt: **Risiko** – **schlimmstenfalls** – **wie prüfen**.
 
+> **Nachtrag 29.10.2026:** Die Fertigungsdaten sind zur Fertigung freigegeben. Die Punkte „VOR BESTELLUNG“ (Abschnitt 2)
+> sind damit erledigt bzw. gegenstandslos; offen bleiben die Punkte „AM MUSTER“ (Abschnitt 3). Aktuelle Übersicht:
+> [`README.md`](README.md), Abschnitt „Offene Punkte“.
+
 Kennzeichnung: **VOR BESTELLUNG** = klären, bevor bestellt wird · **AM MUSTER** = erst mit der bestückten Platine
 prüfbar (Etappe in `AUFBAU-UND-INBETRIEBNAHME.md`) · **KOMPROMISS** = bewusst so entschieden · **GEKLÄRT** = in dieser
 Prüfung erledigt. Schätzwerte sind als solche markiert.
