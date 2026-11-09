@@ -5584,8 +5584,25 @@ class PrinterK2Box:
                     gcmd.respond_info("[k2_box] EXTRUDE: %s bereits geladen"
                                       % (tnn,))
                     return
-                raise BoxChangeError("Kopfsensor meldet noch Filament – erst "
-                                     "KTWO_BOX_CUT + KTWO_BOX_RETRUDE")
+                # 09.11.2026: eigener Fehlercode (Stock key852 „check extruder
+                # filament sensor and box sensor state“). Vorfall: nach dem
+                # Schnitt blieb ein PETG-Reststück am Kopfsensor, der Hub war
+                # leer -> jeder Einzug wurde abgelehnt, ohne dass die Meldung
+                # sagte, was zu tun ist.
+                if not hub:
+                    raise BoxChangeError(
+                        "key852 Reststück im Druckkopf: Kopfsensor meldet "
+                        "Filament, aber der Hub der CFS ist leer – ein "
+                        "abgeschnittenes Stück steckt noch im Kopf. Abhilfe: "
+                        "1) Düse auf Drucktemperatur heizen, 2) "
+                        "SET_STEPPER_ENABLE STEPPER=extruder ENABLE=0, 3) "
+                        "Schlauch oben am Kopf lösen, Reststück mit einem "
+                        "Stück Filament von oben durch die Düse drücken, "
+                        "Hilfsstück wieder herausziehen, Schlauch einstecken, "
+                        "4) KTWO_BOX_ERROR_CLEAR, Wechsel (T<n>) wiederholen, "
+                        "dann RESUME")
+                raise BoxChangeError("key852 Kopfsensor meldet noch Filament – "
+                                     "erst KTWO_BOX_CUT + KTWO_BOX_RETRUDE")
             sensor_fn = None
             if head is not None:
                 sensor_fn = lambda: self._head_filament() is True  # noqa: E731
