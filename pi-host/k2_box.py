@@ -1324,6 +1324,58 @@ def save_slot_material(path, slots):
     return _atomic_write_json(p, data)
 
 
+# Wechseltemperatur je Materialname AUSSERHALB eines Drucks (10.11.2026):
+# Fächer tragen seit CFS_FARBEN/Seite „CFS-Fächer“ Namen wie „ASA“ statt
+# RFID-Nummern; ohne Material-DB-Treffer galt bisher immer Tn_extrude_temp
+# (220 °C) – zu kalt für ASA/PC/PA. Im Druck unverändert (Ziel aus der
+# Druckdatei bzw. bisheriger Fallback). [k2_box] material_temps überschreibt
+# einzelne Werte („ASA=255, PC=280“).
+MATERIAL_TEMPS_DEFAULT = {
+    "PLA": 220.0, "PETG": 240.0, "PET": 240.0, "PCTG": 240.0,
+    "ABS": 250.0, "ASA": 250.0, "HIPS": 240.0, "TPU": 230.0,
+    "PA": 270.0, "PC": 270.0, "PP": 230.0, "PVA": 210.0, "BVOH": 210.0,
+}
+
+
+def parse_material_temps(raw):
+    """'ASA=255, PC=280' -> Tabelle (Default + Änderungen). ValueError bei
+    kaputtem Eintrag oder Temperatur außerhalb 150-350 °C."""
+    out = dict(MATERIAL_TEMPS_DEFAULT)
+    for part in str(raw or "").replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise ValueError("material_temps: '%s' – erwartet NAME=Temperatur"
+                             % part)
+        name, val = part.split("=", 1)
+        name = name.strip().upper()
+        try:
+            t = float(val)
+        except ValueError:
+            raise ValueError("material_temps: '%s' – Temperatur keine Zahl"
+                             % part)
+        if not name or not 150.0 <= t <= 350.0:
+            raise ValueError("material_temps: '%s' – Name leer oder "
+                             "Temperatur nicht 150-350 °C" % part)
+        out[name] = t
+    return out
+
+
+def material_name_temp(table, key):
+    """Materialname -> Temperatur oder None. Exakt (ohne Groß/klein), sonst
+    der Teil vor dem ersten '-' (PLA-CF -> PLA, PETG-CF -> PETG)."""
+    if not key or not table:
+        return None
+    k = str(key).strip().upper()
+    if k in table:
+        return float(table[k])
+    base = k.split("-", 1)[0]
+    if base in table:
+        return float(table[base])
+    return None
+
+
 # Fachbelegung für OrcaSlicer (10.11.2026). Orca liest beim „Synchronisieren“
 # den Moonraker-Namespace lane_data (MoonrakerPrinterAgent::
 # fetch_moonraker_filament_data): je Eintrag "lane" (Fach 0-basiert, als
@@ -1991,6 +2043,10 @@ def parse_options(opts):
       ~/printer_data/config/k2/slot_material.json, leer = aus; README §15),
       orca_lane_url (Default http://127.0.0.1:7125, leer = aus;
       Fachbelegung -> Moonraker lane_data für OrcaSlicer, README §15),
+      material_temps (Default leer = eingebaute Tabelle PLA 220, PETG/PCTG
+      240, ABS/ASA 250, TPU 230, PA/PC 270 …; „ASA=255, PC=280“ ändert
+      einzelne Werte): Wechseltemperatur je Materialname außerhalb eines
+      Drucks, wenn die Material-DB das Material nicht kennt,
       flush_clean stock|legacy (Default stock), flush_blow (Default True),
       flush_blow_fan (Default fan0), flush_clog_check (Default False) und
       die Stock-[box]-Werte nozzle_volume, flush_multiplier, … (s. oben).
@@ -2071,6 +2127,9 @@ def parse_options(opts):
         # Fachbelegung an OrcaSlicer (Moonraker lane_data, 10.11.2026).
         # Leer = aus.
         "orca_lane_url": _str("orca_lane_url", ORCA_LANE_URL_DEFAULT),
+        # Wechseltemperatur je Materialname außerhalb eines Drucks
+        # (10.11.2026); leer = eingebaute Tabelle MATERIAL_TEMPS_DEFAULT.
+        "material_temps": _str("material_temps", ""),
         # Reinigung je Abschnitt: stock = Blech zwischen den Abschnitten,
         # Silikon-Kreise nur am Ende; legacy = volles Abstreifen nach jedem
         "flush_clean": _str("flush_clean", "stock").lower(),
@@ -3180,6 +3239,11 @@ class PrinterK2Box:
         self._mat_names = {}
         # OrcaSlicer-Spiegel (lane_data): zuletzt erfolgreich gesendet
         self.orca_url = (self.cfg.get("orca_lane_url") or "").strip()
+        try:
+            self.mat_temps = parse_material_temps(
+                self.cfg.get("material_temps"))
+        except ValueError as exc:
+            raise config.error("[k2_box] Config-Fehler: %s" % (exc,))
         self._orca_sent = {}
         self._orca_busy = False
         self._orca_timer = None
@@ -4650,6 +4714,17 @@ class PrinterK2Box:
         """Material-Temperatur aus der DB (gekappt), sonst Tn_extrude_temp
         (Stock-Fallback) + Hinweis in notes (nur mit geladener DB)."""
         fb = float(self.cfg["tn_extrude_temp"])
+        nt = None
+        if field == "temp" and not self._print_active():
+            nt = material_name_temp(self.mat_temps, mp.get("key"))
+        if nt is not None and (self.material_db is None
+                               or not mp.get("temp_known")):
+            lim = self._temp_limit()
+            if lim is not None and nt > lim:
+                nt = lim
+            notes.append("%s: %s außerhalb des Drucks -> %s °C "
+                         "(Materialtabelle)" % (label, mp.get("key"), _n(nt)))
+            return nt
         if self.material_db is None:
             return fb
         ok = mp.get("temp_known") if field == "temp" else mp.get("max_known")
@@ -5521,8 +5596,7 @@ class PrinterK2Box:
             if not head_empty:  # Stock: nur mit Filament
                 # Material in der Düse (remain_material bzw. geladener Slot)
                 self._heat(gcmd, self._change_temp(
-                    gcmd, self._nozzle_key() if self.material_db is not None
-                    else None, "Rückzug"))
+                    gcmd, self._nozzle_key(), "Rückzug"))
             # Live 26.10.2026: Kopf leer (Faden schon am Sensor vorbei) und
             # Düse kalt (Pause 140 °C) -> die Extruder-Schritte scheiterten mit
             # „Extrude below minimum temp“, der Wechsel brach ab. Ohne Faden
@@ -5654,6 +5728,9 @@ class PrinterK2Box:
             key = None
             if self.material_db is not None:
                 tag = self._slot_tag(letter)
+                key = tag[0] if tag else None
+            else:  # 10.11.2026: Materialname (Handwert) für material_temps
+                tag = self._cached_tag(letter)
                 key = tag[0] if tag else None
             self._go_extrude_pos(gcmd)
             self._heat(gcmd, self._change_temp(gcmd, key, "Einzug %s" % tnn))

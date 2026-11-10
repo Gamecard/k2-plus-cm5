@@ -2905,6 +2905,54 @@ def test_material_temperaturen():
             "DB aus = bisher (220, F360, kein RFID-Lesen)")
 
 
+def test_material_name_temps():
+    """10.11.2026: Wechseltemperatur je Materialname außerhalb des Drucks."""
+    t = K.parse_material_temps("")
+    assert t["PLA"] == 220 and t["ASA"] == 250 and t["PC"] == 270
+    t = K.parse_material_temps("asa=255; PC=280")
+    assert t["ASA"] == 255 and t["PC"] == 280 and t["PLA"] == 220
+    for bad in ("ASA", "ASA=heiss", "ASA=500", "=240"):
+        try:
+            K.parse_material_temps(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("kein Fehler bei %r" % bad)
+    nt = K.material_name_temp
+    assert nt(t, "pla-cf") == 220 and nt(t, "PETG-CF") == 240
+    assert nt(t, "190003") is None and nt(t, None) is None
+    # DB aus, Fach C = ASA (Handwert), kein Druck -> Einzug mit 250 °C
+    bus, printer, mod = _material_hull(db=False)
+    mod.cmd_slot_set(FakeGcmd({"SLOT": "T1C", "TYPE": "ASA"}))
+    bus.head_at_mm = 100.0
+    g = FakeGcmd({"TNN": "T1C"})
+    mod.cmd_extrude(g)
+    assert "M109 S250" in printer.gcode.scripts, printer.gcode.scripts
+    assert any("Materialtabelle" in m for m in g.infos), g.infos
+    # im Druck: wie bisher max(Ziel, 220), keine Tabelle
+    bus, printer, mod = _material_hull(db=False)
+    mod.cmd_slot_set(FakeGcmd({"SLOT": "T1C", "TYPE": "ASA"}))
+    printer.print_state, printer.target = "printing", 230.0
+    printer._refresh()
+    bus.head_at_mm = 100.0
+    mod.cmd_extrude(FakeGcmd({"TNN": "T1C"}))
+    sc = printer.gcode.scripts
+    assert "M109 S230" in sc and "M109 S250" not in sc, sc
+    # Rückzug ohne Druck: Material in der Düse (remain_material) = PC -> 270
+    bus, printer, mod = _material_hull(db=False)
+    bus.hub_mask, bus.head = 0x04, True
+    mod.remain_material = {"type": "PC", "color": "0000000", "tnn": "T1C"}
+    mod.cmd_retrude(FakeGcmd({}))
+    assert "M109 S270" in printer.gcode.scripts, printer.gcode.scripts
+    # unbekannter Name / RFID-Nummer -> wie bisher 220
+    bus, printer, mod = _material_hull(db=False)
+    bus.head_at_mm = 100.0
+    mod.cmd_extrude(FakeGcmd({"TNN": "T1C"}))
+    assert "M109 S220" in printer.gcode.scripts, printer.gcode.scripts
+    return ("Tabelle/Overrides/Fehler, PLA-CF->PLA; ohne Druck ASA 250, "
+            "Rückzug PC 270; im Druck max(Ziel, 220) wie bisher; RFID-Nr. 220")
+
+
 def test_flush_farbvolumen():
     """Farb-Spülmenge gegen die Live-Werte (flush.py-Selbsttest, Log 12./13.10.)."""
     F = K._FLUSH
@@ -6859,6 +6907,8 @@ TESTS = [
      test_m8200_abbruch_resume),
     ("Creality-Print-7-Wechselblock (M8200 R E-30 vor dem Schnitt)",
      test_cp7_wechselblock),
+    ("Wechseltemperatur je Materialname (material_temps, 10.11.2026)",
+     test_material_name_temps),
     ("Python-3.9-Syntax", test_python39),
 ]
 
