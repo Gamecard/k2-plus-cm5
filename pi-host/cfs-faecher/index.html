@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CFS-Fächer</title>
+<!-- CFS-Fachbelegung (10.11.2026): Farbe + Material je Fach A-D.
+     Liest k2_box.slot_material über Moonraker, speichert mit
+     KTWO_BOX_SLOT_SET; [k2_box] spiegelt nach Moonraker lane_data
+     (OrcaSlicer „Synchronisieren“). Menüeintrag: config/.theme/navi.json -->
+<style>
+  :root {
+    --bg: #121212; --card: #1e1e1e; --card2: #262626; --line: #333;
+    --text: #e8e8e8; --muted: #9a9a9a; --accent: #2196f3;
+    --ok: #4caf50; --warn: #ff9800; --err: #f44336;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.4 Roboto, "Segoe UI", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+           background: var(--card); border-bottom: 1px solid var(--line); }
+  header a { color: var(--accent); text-decoration: none; font-weight: 500; }
+  header h1 { font-size: 18px; font-weight: 500; margin: 0; flex: 1; }
+  #status { color: var(--muted); font-size: 13px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  .hint { color: var(--muted); margin: 0 0 16px; }
+  .grid { display: grid; gap: 16px;
+          grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line);
+          border-radius: 8px; padding: 16px; display: flex;
+          flex-direction: column; gap: 12px; }
+  .card.dirty { border-color: var(--warn); }
+  .card h2 { margin: 0; font-size: 16px; font-weight: 500;
+             display: flex; justify-content: space-between; }
+  .card h2 small { color: var(--muted); font-weight: 400; }
+  .swatch { position: relative; height: 110px; border-radius: 8px;
+            border: 1px solid var(--line); cursor: pointer;
+            display: flex; align-items: flex-end; padding: 8px;
+            background: repeating-linear-gradient(45deg, #2a2a2a 0 10px,
+                        #222 10px 20px); }
+  .swatch span { background: rgba(0,0,0,.55); color: #fff; padding: 2px 8px;
+                 border-radius: 4px; font-size: 13px; }
+  .swatch input { position: absolute; inset: 0; opacity: 0; width: 100%;
+                  height: 100%; cursor: pointer; border: 0; }
+  .presets { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  .presets button { aspect-ratio: 1; border-radius: 50%; cursor: pointer;
+                    border: 2px solid #444; padding: 0; }
+  .presets button:hover { border-color: #fff; }
+  label { font-size: 12px; color: var(--muted); display: block;
+          margin-bottom: 4px; }
+  select, input[type=text] { width: 100%; background: var(--card2);
+          color: var(--text); border: 1px solid var(--line);
+          border-radius: 4px; padding: 8px; font: inherit; }
+  .row { display: flex; gap: 8px; }
+  .row > div { flex: 1; }
+  .btns { display: flex; gap: 8px; }
+  button.b { flex: 1; border: 0; border-radius: 4px; padding: 9px 12px;
+             font: inherit; font-weight: 500; cursor: pointer;
+             text-transform: uppercase; font-size: 13px; letter-spacing: .5px; }
+  .b.save { background: var(--accent); color: #fff; }
+  .b.clear { background: transparent; color: var(--err);
+             border: 1px solid var(--err); }
+  .b:disabled { opacity: .4; cursor: default; }
+  .foot { margin-top: 20px; display: flex; gap: 12px; align-items: center; }
+  .foot .b { flex: 0 0 auto; }
+  #toast { position: fixed; bottom: 20px; left: 50%;
+           transform: translateX(-50%); background: var(--card2);
+           border: 1px solid var(--line); border-radius: 6px;
+           padding: 10px 16px; display: none; max-width: 90vw; }
+  #toast.err { border-color: var(--err); }
+  #toast.ok { border-color: var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/">← Mainsail</a>
+  <h1>CFS-Fächer</h1>
+  <span id="status">lädt …</span>
+</header>
+<main>
+  <p class="hint">Farbe anklicken (Farbwähler) oder unten eine Farbe wählen,
+  Material aussuchen, <b>Speichern</b>. Danach in OrcaSlicer
+  „Synchronisieren“ klicken.</p>
+  <div class="grid" id="grid"></div>
+  <div class="foot">
+    <button class="b save" id="saveAll" disabled>Alle Änderungen speichern</button>
+    <span id="orca" class="hint" style="margin:0"></span>
+  </div>
+</main>
+<div id="toast"></div>
+<script>
+"use strict";
+const FAECHER = ["A", "B", "C", "D"];
+const PRESETS = [
+  ["Rot", "FF0000"], ["Orange", "FF8000"], ["Gelb", "FFD000"],
+  ["Grün", "00A000"], ["Blau", "0050FF"], ["Lila", "8000C0"],
+  ["Pink", "FF69B4"], ["Türkis", "00C0C0"], ["Braun", "8B4513"],
+  ["Schwarz", "000000"], ["Weiß", "FFFFFF"], ["Grau", "808080"],
+  ["Silber", "C0C0C0"], ["Gold", "D4AF37"], ["Natur", "F0EDE0"],
+  ["Dunkelblau", "002080"]];
+const NAMEN = Object.fromEntries(PRESETS.map(([n, h]) => [h, n]));
+const STD_MAT = ["PLA", "PLA-HS", "PLA-SILK", "PLA-CF", "PETG", "PCTG",
+                 "ABS", "ASA", "TPU", "PA", "PC"];
+let materialien = STD_MAT;
+const zustand = {};   // Fach -> {color, type, saved: {color, type}}
+
+const $ = (s, el = document) => el.querySelector(s);
+
+function toast(text, art) {
+  const t = $("#toast");
+  t.textContent = text; t.className = art || ""; t.style.display = "block";
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none",
+                                              art === "err" ? 8000 : 3000);
+}
+
+async function query() {
+  const r = await fetch("/printer/objects/query?k2_box=slot_material,orca_lane_last,ready"
+    + "&gcode_macro%20_CFS_TABELLE");
+  if (!r.ok) throw new Error("Moonraker HTTP " + r.status);
+  return (await r.json()).result.status;
+}
+
+async function gcode(script) {
+  const r = await fetch("/printer/gcode/script", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({script})});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j.error && j.error.message) || ("HTTP " + r.status));
+}
+
+function hexAus(c) { return c ? String(c).slice(-6).toUpperCase() : ""; }
+
+function karte(f) {
+  const el = document.createElement("div");
+  el.className = "card"; el.id = "f" + f;
+  el.innerHTML = `
+    <h2>Fach ${f} <small>T1${f}</small></h2>
+    <div class="swatch" title="Farbe wählen">
+      <span class="name">keine Farbe</span>
+      <input type="color" class="picker">
+    </div>
+    <div class="presets"></div>
+    <div class="row">
+      <div><label>Material</label><select class="mat"></select></div>
+      <div><label>Farbcode</label><input type="text" class="hex" maxlength="7" placeholder="z. B. FF0000"></div>
+    </div>
+    <div class="btns">
+      <button class="b clear">Leeren</button>
+      <button class="b save" disabled>Speichern</button>
+    </div>`;
+  const pre = $(".presets", el);
+  for (const [n, h] of PRESETS) {
+    const b = document.createElement("button");
+    b.style.background = "#" + h; b.title = n;
+    b.onclick = () => setze(f, {color: h});
+    pre.appendChild(b);
+  }
+  $(".picker", el).oninput = e => setze(f, {color: e.target.value.slice(1).toUpperCase()});
+  $(".hex", el).onchange = e => {
+    const v = e.target.value.trim().replace(/^#/, "").toUpperCase();
+    if (v === "" || /^[0-9A-F]{6}$/.test(v)) setze(f, {color: v});
+    else { toast("Farbcode muss 6 Zeichen 0-9/A-F haben, z. B. FF0000", "err"); zeichne(f); }
+  };
+  $(".mat", el).onchange = e => setze(f, {type: e.target.value});
+  $(".save", el).onclick = () => speichern([f]);
+  $(".clear", el).onclick = () => { setze(f, {color: "", type: ""}); speichern([f]); };
+  return el;
+}
+
+function geaendert(f) {
+  const z = zustand[f];
+  return z.color !== z.saved.color || z.type !== z.saved.type;
+}
+
+function setze(f, neu) { Object.assign(zustand[f], neu); zeichne(f); }
+
+function zeichne(f) {
+  const z = zustand[f], el = $("#f" + f);
+  const sw = $(".swatch", el);
+  sw.style.background = z.color ? "#" + z.color : "";
+  $(".name", el).textContent = z.color
+    ? (NAMEN[z.color] ? NAMEN[z.color] + " · " : "") + "#" + z.color
+    : "keine Farbe";
+  $(".picker", el).value = "#" + (z.color || "808080");
+  if (document.activeElement !== $(".hex", el)) $(".hex", el).value = z.color;
+  const sel = $(".mat", el);
+  const liste = ["", ...materialien];
+  if (z.type && !liste.includes(z.type)) liste.push(z.type);
+  sel.innerHTML = liste.map(m => `<option value="${m}">${m || "– kein Material –"}</option>`).join("");
+  sel.value = z.type;
+  const d = geaendert(f);
+  el.classList.toggle("dirty", d);
+  $(".save", el).disabled = !d;
+  $("#saveAll").disabled = !FAECHER.some(geaendert);
+}
+
+async function speichern(liste) {
+  try {
+    for (const f of liste) {
+      const z = zustand[f];
+      await gcode(`KTWO_BOX_SLOT_SET SLOT=T1${f} COLOR=${z.color || "none"} TYPE=${z.type || "none"}`);
+      z.saved = {color: z.color, type: z.type};
+      zeichne(f);
+    }
+    toast("Gespeichert – in OrcaSlicer „Synchronisieren“ klicken.", "ok");
+    setTimeout(laden, 1500);
+  } catch (e) {
+    toast("Nicht gespeichert: " + e.message, "err");
+  }
+}
+
+async function laden() {
+  try {
+    const st = await query();
+    const kb = st.k2_box || {};
+    const tab = st["gcode_macro _CFS_TABELLE"];
+    if (tab && Array.isArray(tab.materialien) && tab.materialien.length)
+      materialien = tab.materialien;
+    const sm = kb.slot_material || {};
+    for (const f of FAECHER) {
+      const s = sm[f] || {};
+      const saved = {color: hexAus(s.color), type: s.type || ""};
+      if (!zustand[f]) zustand[f] = {...saved, saved};
+      else if (!geaendert(f)) Object.assign(zustand[f], saved, {saved});
+      else zustand[f].saved = saved;
+      zeichne(f);
+    }
+    $("#status").textContent = kb.ready ? "CFS bereit" : "CFS nicht bereit";
+    $("#orca").textContent = kb.orca_lane_last
+      ? "OrcaSlicer-Daten: " + kb.orca_lane_last : "";
+  } catch (e) {
+    $("#status").textContent = "keine Verbindung (" + e.message + ")";
+  }
+}
+
+for (const f of FAECHER) $("#grid").appendChild(karte(f));
+$("#saveAll").onclick = () => speichern(FAECHER.filter(geaendert));
+laden();
+setInterval(laden, 5000);
+</script>
+</body>
+</html>

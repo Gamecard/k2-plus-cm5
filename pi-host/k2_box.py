@@ -1324,6 +1324,46 @@ def save_slot_material(path, slots):
     return _atomic_write_json(p, data)
 
 
+# Fachbelegung für OrcaSlicer (10.11.2026). Orca liest beim „Synchronisieren“
+# den Moonraker-Namespace lane_data (MoonrakerPrinterAgent::
+# fetch_moonraker_filament_data): je Eintrag "lane" (Fach 0-basiert, als
+# Text), "color" (#RRGGBB) und "material" (Typname, Orca sucht dazu selbst
+# das Filament-Profil). Fach ohne Material = leer.
+ORCA_LANE_URL_DEFAULT = "http://127.0.0.1:7125"
+ORCA_LANE_INTERVAL = 5.0
+
+
+def orca_lane_data(slots, mat_name=None):
+    """_slot_material_status() -> {"lane1": {...}, …, "lane4": {...}}.
+    mat_name(key) -> Typname oder None (Material-DB); sonst der Typ selbst."""
+    out = {}
+    for i, letter in enumerate(SLOT_LETTERS):
+        info = (slots or {}).get(letter) or {}
+        col = info.get("color") or ""
+        typ = info.get("type") or ""
+        if typ and mat_name is not None:
+            typ = mat_name(typ) or typ
+        out["lane%d" % (i + 1)] = {
+            "lane": str(i),
+            "color": ("#" + col[-6:].upper()) if len(col) >= 6 else "",
+            "material": typ}
+    return out
+
+
+def post_lane_data(url, key, value, timeout=3.0):
+    """Einen lane_data-Eintrag in die Moonraker-DB schreiben (blockierend,
+    nur aus einem Hilfsthread aufrufen). Fehler -> Ausnahme."""
+    import urllib.request
+    body = json.dumps({"namespace": "lane_data", "key": key,
+                       "value": value}).encode("utf-8")
+    req = urllib.request.Request(
+        url.rstrip("/") + "/server/database/item", data=body,
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        if resp.status != 200:
+            raise OSError("HTTP %s" % resp.status)
+
+
 # ---------------------------------------------------------------------
 # Externe Spule: Filamentquelle + externes Material (19.10.2026)
 # ---------------------------------------------------------------------
@@ -1949,6 +1989,8 @@ def parse_options(opts):
       ~/printer_data/config/k2/remain_material.json, leer = aus),
       slot_material_file (Pfad, Default
       ~/printer_data/config/k2/slot_material.json, leer = aus; README §15),
+      orca_lane_url (Default http://127.0.0.1:7125, leer = aus;
+      Fachbelegung -> Moonraker lane_data für OrcaSlicer, README §15),
       flush_clean stock|legacy (Default stock), flush_blow (Default True),
       flush_blow_fan (Default fan0), flush_clog_check (Default False) und
       die Stock-[box]-Werte nozzle_volume, flush_multiplier, … (s. oben).
@@ -2026,6 +2068,9 @@ def parse_options(opts):
         # (nur im Speicher bis zum Neustart).
         "slot_material_file": _str("slot_material_file",
                                    SLOT_MATERIAL_FILE_DEFAULT),
+        # Fachbelegung an OrcaSlicer (Moonraker lane_data, 10.11.2026).
+        # Leer = aus.
+        "orca_lane_url": _str("orca_lane_url", ORCA_LANE_URL_DEFAULT),
         # Reinigung je Abschnitt: stock = Blech zwischen den Abschnitten,
         # Silikon-Kreise nur am Ende; legacy = volles Abstreifen nach jedem
         "flush_clean": _str("flush_clean", "stock").lower(),
@@ -3133,6 +3178,12 @@ class PrinterK2Box:
         self._slot_loaded = False
         self.rfid_last = ""
         self._mat_names = {}
+        # OrcaSlicer-Spiegel (lane_data): zuletzt erfolgreich gesendet
+        self.orca_url = (self.cfg.get("orca_lane_url") or "").strip()
+        self._orca_sent = {}
+        self._orca_busy = False
+        self._orca_timer = None
+        self.orca_last = ""
         # Slicer-Spülmatrix (flush_mode matrix): Cache (Pfad, Größe, mtime)
         # -> Ergebnis/Fehlertext; Reset bei virtual_sdcard:reset_file.
         self._matrix_cache = None
@@ -3630,6 +3681,58 @@ class PrinterK2Box:
             self._mat_names[mk] = txt
         return self._mat_names[mk]
 
+    # --- Fachbelegung -> OrcaSlicer (Moonraker lane_data), 10.11.2026 ---
+    def _orca_start(self):
+        if not self.orca_url or self._orca_timer is not None:
+            return
+        try:
+            self._orca_timer = self.reactor.register_timer(
+                self._orca_tick, getattr(self.reactor, "NOW", 0))
+        except Exception as exc:
+            self.orca_last = "Timer nicht startbar: %s" % (exc,)
+
+    def _orca_name(self, key):
+        if self.material_db is None:
+            return None
+        try:
+            mp = self._mat(key)
+        except Exception:
+            return None
+        return mp.get("mtype") if mp.get("known") else None
+
+    def _orca_tick(self, eventtime):
+        """Alle ORCA_LANE_INTERVAL s: geänderte Fächer im Hilfsthread an
+        Moonraker senden (Reactor blockiert nie; Fehler -> nächster Takt)."""
+        if not self._orca_busy:
+            try:
+                data = orca_lane_data(self._slot_material_status(),
+                                      self._orca_name)
+            except Exception as exc:
+                data = {}
+                self.orca_last = "Fehler: %s" % (exc,)
+            todo = {k: v for k, v in data.items()
+                    if self._orca_sent.get(k) != v}
+            if todo:
+                self._orca_busy = True
+                url = self.orca_url
+
+                def _work():
+                    try:
+                        for k, v in sorted(todo.items()):
+                            post_lane_data(url, k, v)
+                            self._orca_sent[k] = v
+                        self.orca_last = "gesendet %s" % time.strftime(
+                            "%H:%M:%S")
+                    except Exception as exc:
+                        self.orca_last = "Moonraker nicht erreichbar: %s" % (
+                            exc,)
+                    finally:
+                        self._orca_busy = False
+
+                threading.Thread(target=_work, name="k2_box-orca",
+                                 daemon=True).start()
+        return eventtime + ORCA_LANE_INTERVAL
+
     def _slot_material_status(self):
         """Je Slot der Box: wirksames Material/Farbe + Quelle (ohne Bus)."""
         ctl = self.controller
@@ -3664,6 +3767,7 @@ class PrinterK2Box:
         self._load_slots()
         self._load_source()
         self._hook_cancel()
+        self._orca_start()
         # Meldungen hier (Connect) puffert self.konsole bis kurz nach „ready“
         try:
             self._ensure_controller()
@@ -3931,6 +4035,7 @@ class PrinterK2Box:
             "slot_material_file": self.slot_file or "",
             "slot_material_load": self.slot_load,
             "slot_material_info": self.slot_info or "",
+            "orca_lane_last": self.orca_last,
             "rfid_last": self.rfid_last or "",
             "prime_speed": self._prime_speed(),
             "flush_mode": self.cfg.get("flush_mode", "matrix"),
