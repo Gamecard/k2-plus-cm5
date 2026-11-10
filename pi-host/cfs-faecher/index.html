@@ -169,10 +169,14 @@ function karte(f) {
 
 function geaendert(f) {
   const z = zustand[f];
+  if (!z) return false;
   return z.color !== z.saved.color || z.type !== z.saved.type;
 }
 
-function setze(f, neu) { Object.assign(zustand[f], neu); zeichne(f); }
+function setze(f, neu) {
+  if (!zustand[f]) { toast("Daten noch nicht geladen – bitte kurz warten", "err"); return; }
+  Object.assign(zustand[f], neu); zeichne(f);
+}
 
 function zeichne(f) {
   const z = zustand[f], el = $("#f" + f);
@@ -198,6 +202,7 @@ async function speichern(liste) {
   try {
     for (const f of liste) {
       const z = zustand[f];
+      if (!z) throw new Error("Fach " + f + " noch nicht geladen");
       await gcode(`KTWO_BOX_SLOT_SET SLOT=T1${f} COLOR=${z.color || "none"} TYPE=${z.type || "none"}`);
       z.saved = {color: z.color, type: z.type};
       zeichne(f);
@@ -223,8 +228,8 @@ async function laden() {
       if (!zustand[f]) zustand[f] = {...saved, saved};
       else if (!geaendert(f)) Object.assign(zustand[f], saved, {saved});
       else zustand[f].saved = saved;
-      zeichne(f);
     }
+    FAECHER.forEach(zeichne);
     $("#status").textContent = kb.ready ? "CFS bereit" : "CFS nicht bereit";
     $("#orca").textContent = kb.orca_lane_last
       ? "OrcaSlicer-Daten: " + kb.orca_lane_last : "";
