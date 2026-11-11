@@ -18,6 +18,44 @@ Der Protokoll-Nachbau in Python liegt in `nachbau/`; der Installer kopiert ihn a
 `~/klipper/klippy/extras/k2_nachbau/`. Bedient wird über Mainsail im Browser, das Original-Touchdisplay bleibt ohne
 Funktion.
 
+## Ziel des Projekts
+
+**Der Creality K2 Plus soll mit Upstream-Klipper auf einem Raspberry Pi CM5 laufen – mit allen Funktionen des
+Druckers, einschließlich CFS-Mehrfarbbetrieb.**
+
+| Teil | Im Projekt |
+|---|---|
+| Upper-Board (Allwinner T113 in der Display-Einheit) | **ersetzt** durch den CM5 mit Upstream-Klipper, Moonraker und Mainsail |
+| Bridge-Board, Mainboard, Düsen-Platine, Closed-Loop-Motoren, CFS-Box, Riemen-Module | **bleiben im Gerät**, mit ihrer originalen, unveränderten Creality-Firmware |
+| Original-Touchdisplay | ohne Funktion; Bedienung über Mainsail im Browser, später optional ein eigenes DSI-Display |
+
+**Software:** Damit Upstream-Klipper mit den verbleibenden Creality-Teilen zusammenarbeitet, bringt das Projekt eigene
+Klipper-Module mit, die mit diesen Teilen kommunizieren und die Aufgaben übernehmen, die bisher der Creality-Host
+erledigt hat:
+
+- RS485-Bus, Motoren, CFS-Box und Riemenspannung (`k2_485`, `k2_motor`, `k2_box`, `k2_belt`),
+- Kraftsensor-Antastung und Beschleunigungssensor über die Düsen-MCU (`k2_prtouch`, `k2_lis2dw`),
+- Sicherheits- und Komfortfunktionen wie Fahrgrenzen, Kammer-Überwachung und Wiedereinstieg ab einer Schicht
+  (`k2_safety`, `k2_chamber`, `k2_limits`, `k2_resume` u. a.).
+
+**Hardware:** Die eigene Trägerplatine „K2-CM5-Träger Alpha 1“ sitzt an den Befestigungspunkten des T113, nimmt das
+Original-Flachkabel auf und wird aus den 24 V des Druckers versorgt. Sie bringt RS485, CAN, Strommessung,
+Stromausfall-Erkennung und Kamera-USB mit. Aus dem Aufbau mit IO-Board, Breakout und Steckbrücken wird so ein
+sauberer Einbau.
+
+**Was das bringt:**
+
+- ein offenes, aktuelles Klipper statt eines festen Hersteller-Stands – eigene Makros, eigene Module, Mainsail,
+  Kameras nach Wahl;
+- Erweiterungen, die mit der Original-Software nicht möglich sind, z. B. CAN für einen späteren Toolhead;
+- eine offene, nachbaubare Lösung für andere Besitzer eines K2 Plus.
+
+**Ausblick (Idee, nicht begonnen):** eine Version 3 der Platine, die zusätzlich das Bridge-Board ersetzt – eine
+eigene Platine statt T113, Bridge-Board und Adapter.
+
+Das Projekt ist **Alpha**: Nachbau und Betrieb auf eigene Gefahr, Hardware nur für Testzwecke und nicht kommerziell
+(CC BY-NC-SA 4.0, siehe [Lizenzen](#lizenzen)).
+
 ## Status
 
 | Teil | Stand |
