@@ -783,7 +783,7 @@ def parse_box_state(msg, box_fw=None):
     FW 113 (Box-App vor dem Update am 12.10.2026): nur 4 Datenbytes
     b0 b1 Block-Flags Zustand mit Status 0 (live f7 01 07 00 0a 17 34 00 00
     81) -> kind 'state_v113' (KEIN Ereignis!); b0/b1 dort nur *_guess (FW
-    113 nicht disassembliert). b2 = Block-Flags wie R153 (block_long/
+    113 nicht untersucht). b2 = Block-Flags wie R153 (block_long/
     block_main_motor/block_feeder_mask) – DEUTUNG (V), gestützt durch den
     Hi-Mitschnitt FW 113 (gitstonelabs): 0x02 nach
     Stillstand Slot B (TC @27710), 0x08 nach Insert Slot D (TC @23393);

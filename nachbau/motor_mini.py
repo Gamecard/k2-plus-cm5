@@ -41,7 +41,7 @@ LIVE-STAND 15.10.2026 (Live-Logs, lokal, nicht im Repo; s. motor.py):
 - WARNUNG: Creality-Host MOTOR_GET DATA=0/13 -> Klipper-SHUTDOWN (live 16.10.,
   2x reproduziert; Ursache belegt: get_int -> None -> parse_num_to_byte
   TypeError VOR dem Senden) -> read_variable lehnt Index außerhalb 1..12 ab.
-- query_version: Update-Pfad (0xF0/00, Decompile; live nie beobachtet) –
+- query_version: Update-Pfad (0xF0/00, Schnittstellen-Untersuchung; live nie beobachtet) –
   FREI, reine "get version"-Abfrage (erster Schritt vor request-update).
   Die zustandsändernden F0-Sender (request_update/send_fw_len/update_end)
   gibt es hier bewusst NICHT – nur in motor.py, dort mit confirm-Sperre.
@@ -66,7 +66,7 @@ FUNC_PROTECTION = 0x0C
 FUNC_ADDR = 0x0E
 FUNC_SET_MODE = 0x11
 FUNC_UUID = 0x12
-FUNC_FW_UPDATE = 0xF0      # Update-Pfad, Sub-Codes aus Decompile
+FUNC_FW_UPDATE = 0xF0      # Update-Pfad, Sub-Codes aus der Schnittstellen-Untersuchung
 FUNC_VARIABLE = 0x08       # live 16.10.: [idx] -> 4 B LE
 FUNC_VERSION = 0x0F        # live 16.10.: [00] -> 12 B
 SUB_VERSION_GET = 0x00

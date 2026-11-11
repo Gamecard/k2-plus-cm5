@@ -9,7 +9,7 @@ in den Bootloader geschickt.
 
 Belege:
   [FW §x], [BL §x], [NT §x], [PG §x]: Abschnitte der zugrunde liegenden
-          Protokoll-/Firmware-Analyse (Stock-Updateweg, CFS-Bootloader,
+          Protokoll-/Schnittstellen-Untersuchung (Stock-Updateweg, CFS-Bootloader,
           Gesamtprotokoll; nicht in diesem Repo)
   [BS §x] BOOTSTART-WERKZEUG.md (Nachtrag dieses Werkzeugs: Feinheiten aus
           `mcu_util`/`mcu_util_485` mit Binär-Adresse, Abweichungen, Offenes)
@@ -60,8 +60,8 @@ class ProtokollOffen(Exception):
 # =====================================================================
 UART_BAUD_BOOTLOADER = 115200   # cfsetospeed 0x1002 = B115200 [FW §2.1]
 UART_BAUD_APP = 230400          # Klipper-App, nicht Bootloader [FW §2.1]
-# Befehle 2 Byte [cmd, ~cmd], Handshake 1 Byte [FW §2.2]; Bytefolge an den
-# Literalen geprüft (mcu_util @0x111f0 = 0xfffffd02 -> „02 FD“) [BS §2.1]
+# Befehle 2 Byte [cmd, ~cmd], Handshake 1 Byte [FW §2.2]; Bytefolge
+# geprüft (mcu_util @0x111f0 = 0xfffffd02 -> „02 FD“) [BS §2.1]
 UART_HANDSHAKE = b"\x75"        # Zustand 1: 1 Byte 0x75 [FW §2.2, BS §2.1]
 UART_CMD_VERSION = b"\x00\xff"  # Zustand 7 [FW §2.2]
 UART_CMD_START = b"\x02\xfd"    # Zustand 0x11 [FW §2.2]

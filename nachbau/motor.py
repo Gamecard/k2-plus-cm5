@@ -12,7 +12,7 @@ ERGÄNZUNG 16.10.2026 (Live-Abfragen 16.10.2026, Motor X 0x81, Standby,
 nicht referenziert, gesendet über Creality-G-Codes MOTOR_VERSION/MOTOR_GET):
 0x0F = Version ([00] -> 12 B) und 0x08 = Variablen-Lesepfad ([idx] -> 4 B LE,
 idx 1..12) sind live belegt -> query_motor_version(), read_variable().
-ERGÄNZUNG 16.10.2026 (statische Analyse
+ERGÄNZUNG 16.10.2026 (Schnittstellen-Untersuchung
 motor_control_wrapper.so + Traceback im Live-Log 13:12:27): 0x08-Index 5..8 =
 pos_fdb/spd_fdb/id_fdb/iq_fdb (Host-Dict NO_ERR_CODE_TO_GET), Typkette des
 Hosts fest (1..10,17,18 '<f', 11..16 '<I'), Motor_cmd-Tabelle komplett,
@@ -25,7 +25,7 @@ idx 5 pos_fdb = idx11 * 2*pi/3200 [rad]. Beide wrappen alle 40 mm (eine
 Umdrehung) -> KEINE absolute Achsposition (die hat nur Klipper über den
 Schrittzähler). idx 6 spd_fdb im Stillstand ~0 (+-0,006; Einheit seit
 FW-Analyse 16.10.: rad/s).
-ERGÄNZUNG 16.10.2026 (statische Analyse der Motor-FW-Images
+ERGÄNZUNG 16.10.2026 (Schnittstellen-Untersuchung der Motor-FW-Images
 mot*_022_C30-mot2_002_081.bin aus der Creality-Firmware: WCH RISC-V
 CH32V30x-Klasse, Basis 0x3000 hinter 12-KB-Bootloader, Befehlsregistrierung
 @0x6100-0x63d8) + Live 16.10. (Fahrt X F600/F1200, DIR-Gegenprobe):
@@ -52,7 +52,7 @@ Antworten STATUS 00: 0x13/0x14 len 0x4d -> 74 B, 0x15/0x16 len 0xa4 ->
 reihenfolge ERR_DETAIL_FORMAT bestätigt; 0x14-Zusatzfloat heißt im Host
 param_peak_overcurrent_A).
 - 0x11 heißt in der FW emergency_pin_mode (Host: stall_mode).
-ERGÄNZUNG 17.10.2026 (statische Analyse Motor-FW und Bootloader):
+ERGÄNZUNG 17.10.2026 (Schnittstellen-Untersuchung Motor-FW und Bootloader):
 - KORREKTUR idx 10: FW-Wert = Ib x s, s = -1,0 NUR bei phase_order_invert
   != 0 (@0xbb30 `lh a5,0x5a(s0)`, `beqz` -> +1,0 @0x19c98, sonst -1,0
   @0x19d14; obj+0x5a = Param-ID 10). Live phase_order_invert = 0 -> idx 10
@@ -122,7 +122,7 @@ Umfang:
 - Pin-IO (MOTOR_READ_ALL_PIN_IO): KEIN RS485 – dir/step-Pins der Motoren
   hängen an der Main-MCU (Klipper-GPIO PB9, PB10, !PB7, PB8, PB5, PB6, PA1,
   PB15) -> pin_io bleibt Stub (Main-MCU nötig)
-- Update-Pfad (Func 0xF0, aus mcu_util_485-Decompile; auf dem Motorbus
+- Update-Pfad (Func 0xF0, aus der Untersuchung von mcu_util_485; auf dem Motorbus
   live NIE beobachtet): query_version/query_sector_size frei (Abfragen),
   start_app (Sub 02, Alias update_end) NUR mit confirm=True;
   request_update/send_fw_len HART gesperrt (PermissionError, kein
@@ -211,7 +211,7 @@ FUNC_ADDR = 0x0E           # [02] -> eigene Adresse; FF 0E 01 Broadcast stumm
 FUNC_SET_MODE = 0x11       # Stall-Mode: [01]/[02]/[03] setzen, [04] lesen
 FUNC_STALL_MODE = FUNC_SET_MODE
 FUNC_UUID = 0x12           # [02] -> 8 B UUID (Präfix cd ab)
-FUNC_FW_UPDATE = 0xF0      # Update-Pfad, Sub-Codes aus Decompile (Abschnitt 1.7)
+FUNC_FW_UPDATE = 0xF0      # Update-Pfad, Sub-Codes aus der Schnittstellen-Untersuchung (Abschnitt 1.7)
 FUNC_VARIABLE = 0x08       # live 16.10.: [idx] -> 4 B LE (Variablen-Lesepfad)
 FUNC_VERSION = 0x0F        # live 16.10.: [00] -> 12 B Versionsblock
 
@@ -315,7 +315,7 @@ TIMEOUT_DETAIL = 1.0       # 0x13..0x16: Host-Timeout unbelegt; live Antwort
 
 # Fehler-/Warnbits (Host-Dicts motor_error_dict / motor_warning_dict,
 # Modul-Init, BELEGT als Bit -> key-Zuordnung; Kurztexte = Übersetzung der
-# key-Bedeutung laut statischer Analyse). Byte-Layout der 8-B-Antwort von 0x0C [0b]
+# key-Bedeutung laut Schnittstellen-Untersuchung). Byte-Layout der 8-B-Antwort von 0x0C [0b]
 # seit Motor-FW-Analyse 16.10. BELEGT (FW + Host-Parser): Byte 0-3 = Fehler
 # latched u32 LE, Byte 4-7 = Warnung latched u32 LE; Bit n -> key781+n bzw.
 # key795+n (Host-Index i = 8*Byte + Bit = LE-Bitnummer) -> decode_protection.
@@ -1883,7 +1883,7 @@ class Motor:
         PermissionError auch mit confirm=True, nichts gesendet.
 
         RISIKO: Schaltet den Slave vermutlich in den Bootloader/Update-Modus
-        (danach im Binary nur noch len/Daten/update_end, "wait to startup
+        (danach im Original nur noch len/Daten/update_end, "wait to startup
         app"). Ein Achsmotor verliert dabei die Regelung/das Haltemoment –
         bei Z (0x83/0x84) kann das Bett/Portal mechanisch absacken. Live nie
         beobachtet."""
@@ -2383,7 +2383,7 @@ def selftest():
     bus = _FakeBus([_vrxb(11, struct.pack("<I", 3090))])
     check("read_position_counts idx 11",
           Motor(bus, 0x81).read_position_counts() == 3090 and not bus.script)
-    # Motor_cmd-Tabelle + Adressen + Fehlerbits (Konstanten der statischen Analyse)
+    # Motor_cmd-Tabelle + Adressen + Fehlerbits (Konstanten der Schnittstellen-Untersuchung)
     check("MOTOR_CMD Host-Tabelle", MOTOR_CMD["get"] == 0x08 == FUNC_VARIABLE
           and MOTOR_CMD["version"] == 0x0F and MOTOR_CMD["protection"] == 0x0C
           and MOTOR_CMD["sys_param"] == 0x06 and MOTOR_CMD["stall_mode"] == 0x11
@@ -2722,7 +2722,7 @@ def selftest():
     check("ohne transact_full: status None, Daten trotzdem",
           Motor(nf, 0x83).read_pos_samples()["status"] is None and nf.calls[0][2] == [0x02])
 
-    # 8. Update-Pfad (Doku 1.7 + Disassembly, live nie beobachtet)
+    # 8. Update-Pfad (Doku 1.7 + Schnittstellen-Untersuchung, live nie beobachtet)
     bus = _FakeBus([
         ("81 04 00 f0 00", "f7 81 06 00 f0 00 02 02 %02x"
          % crc8_cal(bytes.fromhex("06 00 f0 00 02 02"))),

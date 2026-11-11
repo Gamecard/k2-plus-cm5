@@ -188,13 +188,13 @@ FRAME_LEN_MAX = 255            # Empfang/neutraler Bau (wie serial485)
 # --- Sendeschutz (17.10.2026, byte-gleich zu nachbau/serial485.py) -----------
 # Längengrenze für AUSGEHENDE Frames (Empfang bleibt bei len 255):
 # - CFS-App: Frame-Kontext 0x70 = 112 B, Daten ab Offset 6, CRC fest bei 0x6A
-#   -> sauber nur <= 100 Datenbytes (CFS-Firmware-Analyse, B).
+#   -> sauber nur <= 100 Datenbytes (CFS-Schnittstellen-Untersuchung, B).
 # - CFS-Bootloader verwirft len > 0xFC stumm (Bootloader-Analyse, B).
 # - Längste live gesendete Requests: 0xA0 mit 13 Datenbytes, 0x06-Schreiben
 #   mit 6; an Motoren (RS485 und transparent) nie mehr als 6 Datenbytes.
 #   Update-Datenblöcke (fun 0xF0) haben genau 0x80 Datenbytes.
 # -> 100 Datenbytes je Frame, bei fun 0xF0 0x80 (len 0x83 < 0xFC).
-# Broadcast-Schutz (Motor-Firmware-Analyse, B): an 0xFF/0xFD nie fun 0x01
+# Broadcast-Schutz (Motor-Schnittstellen-Untersuchung, B): an 0xFF/0xFD nie fun 0x01
 # (reboot) und nie fun 0x0B (boot -> ALLE Motoren in den Bootloader, Motor-FW
 # FUN_104e6 bei Payload [00]); einzige Ausnahme 0xFF 0x0B [01] = CFS-Loader->App
 # (live `0xff 0x4 0x0 0xb 0x1`; Motor-App ignoriert [01], @0x104f6-0x104fc).

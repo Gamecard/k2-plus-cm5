@@ -151,7 +151,7 @@ class FakeBoxBus:
         self.preload_enable = 1
         # Slots: alle belegt mit RFID-Tag (B für Erfolg, A für Fehler – beide
         # mit Filament, damit mode 0 den Hub erreicht und erst das Odometer
-        # stoppt; Beleg CFS-Firmware-Analyse, Folgefehler 3).
+        # stoppt; Beleg CFS-Schnittstellen-Untersuchung, Folgefehler 3).
         self.slots = {}
         for i, letter in enumerate("ABCD"):
             self.slots[letter] = {"filament": True,
@@ -223,7 +223,7 @@ class FakeBoxBus:
             raise TimeoutError("0x0B bleibt unbeantwortet")
         if addr not in (A, 0xFE, 0xEA, 0xEB) and addr != A:
             raise TimeoutError("FakeBox: falsche Adresse 0x%02x" % addr)
-        if fun == 0x0A:  # Status-Poll (6 B, Beleg CFS-Firmware-Analyse)
+        if fun == 0x0A:  # Status-Poll (6 B, Beleg CFS-Schnittstellen-Untersuchung)
             t = self.temp_c & 0xFF
             if self.preload_polls > 0:
                 self.preload_polls -= 1

@@ -59,7 +59,7 @@ Ablauf (wie Stock/Box-Live, nur Box-Seite – kein Toolhead/Motor):
      Diagnose und nicht Teil der Sequenz).
   A6 Cut als Platzhalter (braucht Motor/Toolhead – sendet NICHTS).
 
-Sicherheit (aus der Protokoll- und Firmware-Analyse):
+Sicherheit (aus der Protokoll- und Schnittstellen-Untersuchung):
 - Schreiben (0x0d/0x04/0x0f/0x10/0x11, Auto-Addr 0xA0, GPIO gibt es hier
   nicht) nur mit ``allow_write: True`` (Default False → nur lesen + Plan).
   Lesend (0x02/0x03/0x0a/0x0e-lesen/0x14/0x15/0x05/0x08) jederzeit.
@@ -449,7 +449,7 @@ CHANGE_DEFAULTS = {
     "extrude_sensor_timeout": 90.0,  # live "timeout = 90"
     "extrude_poll_interval": 2.0,    # live 0x10 mode 5 alle ~2 s
     "stage7_delay": 2.0,             # ANNAHME (live 3,7-3,8 s bis mode 7)
-    # = preload_force_timeout(1 Slot) 380 s (Firmware-Analyse:
+    # = preload_force_timeout(1 Slot) 380 s (Schnittstellen-Untersuchung:
     # Box-Auto-Preload 1 Slot bis 364 s; vorher 200 s = zu kurz)
     "box_wait_timeout": float(_BOX.preload_force_timeout(0x01)),
     "box_wait_interval": 1.0,
@@ -1801,7 +1801,7 @@ def gcode_nozzle_clean(c, circle, offset=0.0, restore_accel=None,
 
 def preload_block_reason(op, mask, head, printing, force=False):
     """Stock-Schutz von communication_set_pre_loading
-    (Firmware-Analyse) -> None = senden erlaubt, sonst Klartext.
+    (Schnittstellen-Untersuchung) -> None = senden erlaubt, sonst Klartext.
     - op 2/3 mit Maske 0: Fehlgebrauch (NUM als Slotindex, [00 02]-Bursts).
     - Druck läuft/pausiert: nichts senden, außer force (Stock force=True).
     - op 2/3 nur bei LEEREM Kopf-Filamentsensor (head False); Filament oder
@@ -2733,7 +2733,7 @@ class K2BoxController:
 
     # --- A3 Preload -------------------------------------------------------
     def do_preload(self, slot, op, timeout=None, dry_run=False, guard=None):
-        """0x0d [Maske][op] (op 0-3, Beleg CFS-Firmware-Analyse).
+        """0x0d [Maske][op] (op 0-3, Beleg CFS-Schnittstellen-Untersuchung).
         ANMERKUNG N5: Stock sendet nach jedem
         (Re-)Connect 0x0d [0f 01]/[0f 00] (preloading_en) – hier bewusst
         NICHT (offener Gerätetest: Auto-Preload nach Box-Reset ohne Host-

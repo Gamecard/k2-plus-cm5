@@ -11,7 +11,7 @@ oder ``$KLIPPER_SRC``); nur ``extras.bus`` (SPI) ist eine Attrappe. Formate und
 Kodierung laufen ueber das echte Upstream-``msgproto`` mit dem Creality-
 Duesen-Dictionary.
 
-Die Duesen-Firmware wird nach dem Dekompilat emuliert (``FwSim``, Adressen in
+Die Duesen-Firmware wird nach dem Originalverhalten nachgebildet (``FwSim``, Adressen in
 README-k2_lis2dw.md §2): Timer alle rest_ticks, je Sample 7-Byte-Read ab 0x28 +
 FIFO_SAMPLES-Read, 48-Byte-Puffer -> lis2dw_data, Status mit fifo & 0x1f,
 Start schreibt FIFO_CTRL 0xC0, Stopp liest Rest + Status.
@@ -27,7 +27,7 @@ Prueft:
  4. Achsen-Mapping x,z,y (Stock) und Vorzeichen; 1 g Rohwert -> ~9807 mm/s^2.
  5. Start/Stopp: Registerfolge, query_lis2dw clock/rest_ticks, minclock der
     ersten Statusabfrage, Stopp-Abfrage, falsche Chip-ID, Batch-Modus.
- 6. Zeitachse/Clock gegen Firmware-Emulation (Disassembly 22.10.2026: 1
+ 6. Zeitachse/Clock gegen Firmware-Emulation (Schnittstellen-Untersuchung 22.10.2026: 1
     Sample je Timer, Leer-Schleife bei leerem FIFO): Stock-Lesetakt 2,5 ms
     -> 385 Hz (= live), Default 1,5 ms -> ~625 Hz, Streuung/Drift/Versatz,
     Chip-ODR +-10 %, alter Host (FIFO mitgezaehlt) als Gegenprobe,
@@ -183,7 +183,7 @@ def roundtrip(mp, name, **params):
 
 
 # ---------------------------------------------------------------------------
-# Chip- und Firmware-Emulation (nach Dekompilat der Duesen-Firmware)
+# Chip- und Firmware-Emulation (nach dem Originalverhalten der Duesen-Firmware)
 # ---------------------------------------------------------------------------
 def default_value(k, clock):
     # Index im Wert kodiert: rx = k mod 30000 - 15000 (auch negativ),
@@ -268,7 +268,7 @@ class FwSim:
     """Emulation command_query_lis2dw / lis2dw_task / lis2dw_query /
     lis2dw_report / command_query_lis2dw_status der Creality-Firmware.
 
-    lis2dw_query (@0x08004e78, Disassembly 22.10.2026) liest JE AUFRUF EIN
+    lis2dw_query (@0x08004e78, Schnittstellen-Untersuchung 22.10.2026) liest JE AUFRUF EIN
     Sample (7 Byte ab 0x28) + FIFO_SAMPLES und entscheidet dann:
       * FIFO_SAMPLES & 0x3f != 0 -> Timer neu: waketime = jetzt + rest_ticks
         (0x8004f04 cbnz -> 0x8004f0a -> 0x8004f1e), also EIN Sample je

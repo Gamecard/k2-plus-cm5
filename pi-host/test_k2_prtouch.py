@@ -577,7 +577,7 @@ def _delta_size(x):
 
 
 class _McuEncoder:
-    """Nachbau Encoder 0x08006524 + Abschluss 0x080064D8 (Firmware-Analyse):
+    """Nachbau Encoder 0x08006524 + Abschluss 0x080064D8 (Schnittstellen-Untersuchung):
     Delta zum Vorgänger (32 Bit), 0x80000000 übersprungen, Rückgabe =
     Datenbytes + (n_alt >> 2) + 2 (= Paketgröße)."""
 
@@ -816,7 +816,7 @@ class FakeProbePres:
     def read_pres(self):
         self.line.log.append("read_pres")
         if self.line.sensor_stuck:
-            # Firmware-Analyse: DOUT hängt high -> alle 5 ms gelesen, Wert -1
+            # Schnittstellen-Untersuchung: DOUT hängt high -> alle 5 ms gelesen, Wert -1
             return [10000000 + i * 600000 for i in range(64)], [-1] * 64
         base = -1428000
         d = [base + ((5000 if i % 2 else -5000) if self.line.rest_noisy
@@ -2098,7 +2098,7 @@ def test_1017_ring_blocks():
 
 def _creality_pc7_pull(cmds):
     """Endzustand des PC7-Pulls in der CREALITY-Firmware aus der Folge der
-    MCU-Config-Befehle (Firmware-Analyse): wer zuletzt konfiguriert, gewinnt;
+    MCU-Config-Befehle (Schnittstellen-Untersuchung): wer zuletzt konfiguriert, gewinnt;
     config_endstop pull_up 0 = Pull-Down, 1 = Pull-Up, sonst schwebend;
     config_prtouch_step = immer Pull-Up."""
     pull = None

@@ -57,7 +57,7 @@ Klipper-Konfiguration auf dem Pi.
 | Speicherort | Werte | Wer schreibt | Bemerkung |
 |---|---|---|---|
 | **Flash jedes Closed-Loop-Motors** (X, Y, Z, Z1, Extruder) | Elektrowinkel-Versatz `elec_offset`, Phasenfolge `phase_order_invert`, Fehlerwinkel `elec_offset_err_deg`, dazu alle Motorparameter (77 IDs) | Werk; am Pi nur `KTWO_MOTOR_CAL_RUN`/`_RESTORE` (Standard gesperrt, §5.1) | bleibt bei Pi-Tausch, Neuinstallation und Rückweg zum Original erhalten |
-| **Werks-Sicherungskopie im Motor** | dieselben drei Kalibrierwerte | Werk; laut Firmware-Analyse auch ein *bestandener* ELEC-Lauf | über den Bus **nicht lesbar** (README §13); die Motor-Firmware holt die Werte beim Einschalten von dort zurück, wenn die Hauptwerte unplausibel sind |
+| **Werks-Sicherungskopie im Motor** | dieselben drei Kalibrierwerte | Werk; laut Schnittstellen-Untersuchung auch ein *bestandener* ELEC-Lauf | über den Bus **nicht lesbar** (README §13); die Motor-Firmware holt die Werte beim Einschalten von dort zurück, wenn die Hauptwerte unplausibel sind |
 | **Encoder-Baustein im Motor** | Linearisierung des magnetischen Winkelgebers | Werk; nur ein ENCODER-Lauf (§5.1) | |
 | **Flash der Riemenspann-Module** `mdlx`/`mdly` | Kennlinie des Kraftsensors (`idl_adc`, `full_adc`), Schieberposition | `KTWO_BELT_CALI` (Kennlinie, Werksthema), `KTWO_BELT_SET`/`BELT_TENSION` (Position) | README-k2_belt §1 |
 | **SAVE_CONFIG-Block der `printer.cfg`** | `[k2_prtouch] z_offset`, Bettnetz-Profile, `[input_shaper]`, PID-Werte, `[k2_box] cut_pos_x`, Hochtemperatur-PID `[k2_heater_pid] high_pid_*` | `SAVE_CONFIG` | Klipper-seitig; beim erneuten Lauf von `install.sh` bleibt der Block erhalten |
@@ -182,7 +182,7 @@ Dauerangaben ohne Zusatz stammen aus Konfiguration oder Code; „Gerät“ heiß
 | PID Hochtemperatur (§4.8) | `NOZZLE_PID_HIGH [TEMP=300]` | `high_pid_*` in `[k2_heater_pid]` | Pendeln ab 280 °C | nur wenn über 280 °C gedruckt wird | ≈ 2 min | nein | mittel (nur mit leerer Düse) |
 | PID Bett (§4.8) | `BEDPID [TEMP=100]` | `pid_Kp/Ki/Kd` des Betts | Betttemperatur pendelt | bei unruhiger Temperatur, nach Teiletausch | ≈ 10 min | nein | gering |
 | Input Shaper (§4.9) | `INPUTSHAPER [ACHSE=X\|Y] [SPEICHERN=1]` | `shaper_type`/`shaper_freq` X und Y | Nachschwingen (Ringing) an Kanten | nach der Inbetriebnahme, nach Riemenspannen oder Umbau | 307 s inkl. Homing (Gerät) | ja, laut | gering |
-| Motor-Elektrowinkel (§5.1) | `KTWO_MOTOR_CAL_RUN … MODE=ELEC` | `elec_offset`, `phase_order_invert` im Motor-Flash | **laut Firmware-Analyse**: Drehmomentverlust, Schwingen, Überstrom, Schleppfehler | nur Ausnahmefall; **Standard gesperrt** | bis 45 s (Gerät: 15,3 s) | ja, open-loop **ohne Schutz** | hoch |
+| Motor-Elektrowinkel (§5.1) | `KTWO_MOTOR_CAL_RUN … MODE=ELEC` | `elec_offset`, `phase_order_invert` im Motor-Flash | **laut Schnittstellen-Untersuchung**: Drehmomentverlust, Schwingen, Überstrom, Schleppfehler | nur Ausnahmefall; **Standard gesperrt** | bis 45 s (Gerät: 15,3 s) | ja, open-loop **ohne Schutz** | hoch |
 | Encoder (§5.1) | `KTWO_MOTOR_CAL_RUN … MODE=ENCODER` | Encoder-Baustein, danach ELEC Pflicht | wie oben | nur Ausnahmefall; **Standard gesperrt** | bis 120 s | ja, bis ≈ 63 Umdrehungen **ohne Schutz** | sehr hoch |
 | Kraftsensor der Riemenmodule (§5.2) | `KTWO_BELT_CALI DIR=0\|1\|2` | Kennlinie im Modul-Flash | `key714/715` (nicht kalibriert) | Werksthema, nur mit definierter Prüfkraft | – | nein | hoch (überschreibt Kennlinie) |
 | Lichtschranken-Ausrichtung (§5.4) | `KTWO_ZALIGN`, `ZALIGN_STOCK` | – (Ausrichtung auf Lichtschranken) | – | nur wenn `Z_TILT_ADJUST` nicht reicht; Modul gesperrt und am Gerät ungetestet | – | ja | hoch |
@@ -231,7 +231,7 @@ Ausnahmefall (§5.1).
 Motor dem Rotor um eine feste elektrische Winkelstellung vorauseilt (**allgemein:** feldorientierte
 Regelung). Dafür muss er wissen, bei welcher Encoder-Stellung der elektrische Winkel 0 liegt
 (`elec_offset`) und in welcher Reihenfolge die Phasen angeschlossen sind (`phase_order_invert`). Laut
-Firmware-Analyse hat der Motor 50 Polpaare: Eine elektrische Periode entspricht 1/50 Umdrehung,
+Schnittstellen-Untersuchung hat der Motor 50 Polpaare: Eine elektrische Periode entspricht 1/50 Umdrehung,
 also 655,36 Encoder-Schritten. Schon ein kleiner Fehler im Versatz kostet deshalb Drehmoment.
 
 **Was gelesen wird** (README §13): Version, Regelungszustand, Fehlerbits, Flash-Prüfsumme, Messwerte
@@ -820,14 +820,14 @@ Beide Modi prüfen zuerst die Phasenfolge mit vier kleinen Schritten und schreib
    `allow_z_calibration`).
 3. **Dauerhafte Fehlkalibrierung.** Ein blockierter Rotor oder ein Encoder-Wert kurz vor dem Umbruch
    (32 767 → 0) täuscht eine vertauschte Phasenfolge vor. Dann steht `phase_order_invert = 1` im Flash.
-   **Laut Firmware-Analyse** regelt der Motor danach mit Mitkopplung: Er geht durch, meldet
+   **Laut Schnittstellen-Untersuchung** regelt der Motor danach mit Mitkopplung: Er geht durch, meldet
    Schleppfehler oder Überstrom (`key783/784/789`) – bis zu einer erneuten Kalibrierung unter freien
    Bedingungen. Ein schlechter `elec_offset` kostet Drehmoment und lässt den Motor schwingen.
 4. **Flüchtige Werte werden dauerhaft.** Die Firmware schreibt die ganze erste Flash-Seite aus dem RAM
    neu. Werte, die sonst nur bis zum Ausschalten gelten (Config-Werte des Motor-Inits, Stall-Modus,
-   `protect_en`), stehen danach im Flash. Die Flash-Prüfsumme weicht danach ab; laut Firmware-Analyse
+   `protect_en`), stehen danach im Flash. Die Flash-Prüfsumme weicht danach ab; laut Schnittstellen-Untersuchung
    prüft der Motor sie beim Start nicht.
-5. **Werks-Sicherung.** Laut Firmware-Analyse überschreibt ein *bestandener* ELEC-Lauf auch die
+5. **Werks-Sicherung.** Laut Schnittstellen-Untersuchung überschreibt ein *bestandener* ELEC-Lauf auch die
    Werks-Sicherungskopie im Motor. Ihr alter Inhalt ist über den Bus nicht lesbar und lässt sich
    deshalb vorher nicht sichern; `KTWO_MOTOR_CAL_BACKUP` sichert nur den Haupt-Parameterblock.
 6. **Positionsverlust.** Nach dem Lauf ist der Motor stromlos. Der Homing-Bezug ist ungültig.

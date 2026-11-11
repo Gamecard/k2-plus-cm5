@@ -10,7 +10,7 @@ Basis 0x08003000). Nutzt den EINGEBAUTEN Kraftsensor (Düse als Taster).
 Grundlagen (nur gelesen, nichts gesendet):
 - Analyse von prtouch_v3_wrapper.so (Architektur, Live-Mitschnitt 99 Tastungen,
   Host-Rechenweg best_indx→step_bst_indx→zoft, Stopp-Weg, Basis 0x08003000)
-- statische Analyse des Stopp-Wegs (Ergebnis: MCU stoppt NICHT
+- Schnittstellen-Untersuchung des Stopp-Wegs (Ergebnis: MCU stoppt NICHT
   selbst; Swap = nur Zeitsync Düse HIGH / Main liest einmal; Host bricht ab;
   kein trsync/endstop_home/stepper_stop in prtouch-Pfaden)
 - Bit-Spezifikation aus der Protokollanalyse (Befehle/Formate/Konstanten,
@@ -345,7 +345,7 @@ LMT_DEAD_MIN = 64
 # erkennung „gefiltert[0] > gefiltert[63]“ (0x0800800E) und der Ruhetest am
 # gefilterten Kanal wären verfälscht.
 PRES_FILTER_WARMUP = 128
-# ANNAHME Reservefaktor 1,5 auf die Totzeit (Vorschlag der Firmware-Analyse):
+# ANNAHME Reservefaktor 1,5 auf die Totzeit (Vorschlag der Schnittstellen-Untersuchung):
 # deckt Oszillator-Abweichung (live +1,2 %), Konfig-Handshake nach start
 # (Schreiben/Rücklesen, B 0x08007DF4) und Schedulingschwankungen ab.
 ARM_SETTLE_RESERVE = 1.5
@@ -370,7 +370,7 @@ STOCK_PGA = 128
 # min_hold: F Modell – max |gefiltert| in reiner Ruhe 1 002 Counts ->
 # eine Schwelle darunter löst schon durch Rauschen aus.
 MIN_HOLD_MIN = 1000
-# Ruhetest (S4) – Erweiterungen 17.10.2026 (Firmware-Analyse):
+# Ruhetest (S4) – Erweiterungen 17.10.2026 (Schnittstellen-Untersuchung):
 REST_MIN_SAMPLES = 32  # ANNAHME: mind. halbes Fenster gültiger Samples
 REST_TICK_TOL = 0.10  # ANNAHME: Median ±10 % um 1/Rate (live +1,2 %);
 # Fehlerbilder „Sensor hängt“ (alle 5 ms, B 0x08005224) und „DOUT dauernd
@@ -566,7 +566,7 @@ def check_probe_speed(speed, cfg):
 
 
 def validate_mcu_params(cfg):
-    """Antast-Parameter gegen die Firmware-Analyse prüfen (wirft ValueError).
+    """Antast-Parameter gegen die Schnittstellen-Untersuchung prüfen (wirft ValueError).
 
     Reihenfolge = Gefährlichkeit. Belege: Analyse der Düsen-Firmware
     (Adressen Düse noz0_130, Basis 0x08003000).
@@ -945,7 +945,7 @@ def parse_options(opts):
         cfg["clock_freq"], cfg["clock_freq"])
     for key, val in mcu_p.items():
         cfg[key] = _int(key, val) if key in o else int(val)
-    # Firmware-Analyse 17.10.2026: Antast-Parameter prüfen (klare Meldung, kein
+    # Schnittstellen-Untersuchung 17.10.2026: Antast-Parameter prüfen (klare Meldung, kein
     # Start) – min_hold != max_hold, ned_hftr != 0, ned_lftr, lmt_dead,
     # cfg_regs, min_hold-Untergrenze, add_hold, pres_idx, acq/aqc_tick.
     validate_mcu_params(cfg)
@@ -1094,7 +1094,7 @@ def parse_options(opts):
     if cfg["pres_check_min_samples"] < 2:
         raise ValueError("pres_check_min_samples muss >= 2 sein")
 
-    # --- Kopplungen nach Firmware-Analyse 17.10.2026 (brauchen alle Werte) ---
+    # --- Kopplungen nach Schnittstellen-Untersuchung 17.10.2026 (brauchen alle Werte) ---
     # arm_settle_s >= Totzeit × Reserve (beide Modi, Stock-Werte: 0,15 s).
     validate_arm_settle(cfg)
     if cfg["mode"] == "probe":
@@ -1182,7 +1182,7 @@ def parse_klipper_config(config):
               "stepper_x_oid", "stepper_y_oid", "stepper_z_oid",
               "can_brk_min_best", "can_brk_min_step", "can_brk_max_zoft",
               "can_brk_scope",
-              # Absicherung Firmware-Analyse 17.10.2026:
+              # Absicherung Schnittstellen-Untersuchung 17.10.2026:
               "rest_filt_max_frac",
               # Rückfallweg-Kontaktkriterium (README B.3):
               "contact_criterion", "contact_steps", "contact_step_min",
@@ -1326,14 +1326,14 @@ def merge_ring(ticks, datas, n=PRES_N):
 
 def drop_empty(ticks, datas):
     """Einträge mit Tick 0 UND Wert 0 verwerfen: Schieberegister nach start
-    noch nicht voll (B Memset bei start, Firmware-Analyse)."""
+    noch nicht voll (B Memset bei start, Schnittstellen-Untersuchung)."""
     keep = [(int(t), int(d)) for t, d in zip(ticks, datas)
             if not (int(t) == 0 and int(d) == 0)]
     return [t for t, _ in keep], [d for _, d in keep]
 
 
 def read_ring_blocks(send, make_args, cfg, decode_data, n_total=RING_N):
-    """64er-Schieberegister blockweise lesen (Firmware-Analyse).
+    """64er-Schieberegister blockweise lesen (Schnittstellen-Untersuchung).
 
     send(args) -> Antwort-Dict mit 'ticks'/'datas' (gepackt);
     make_args(idx, ln) -> Befehlsargumente. Angefragt wird wie Stock
@@ -1480,10 +1480,10 @@ def check_rest_ok(datas, cfg, ticks=None, filt=None):
         24-Bit-Bereich (B: s32 aus 24-Bit-Zweierkomplement),
       - Werte nicht konstant (dif > 0; ANNAHME: ein laufender 24-Bit-ADC mit
         PGA 128 rauscht immer – ein abgezogener Sensor besteht sonst den
-        dif-Test mit dif = 0, Firmware-Analyse).
+        dif-Test mit dif = 0, Schnittstellen-Untersuchung).
     ticks (optional): Tickabstand ≈ 1/Rate (check_tick_spacing).
     filt (optional, is_src=0): max |gefiltert| <= rest_filt_max_frac ×
-      min_hold (Firmware-Analyse; gefiltert = das, was die MCU gegen
+      min_hold (Schnittstellen-Untersuchung; gefiltert = das, was die MCU gegen
       min_hold vergleicht).
     """
     errors = []
@@ -1947,7 +1947,7 @@ class KlippyPresMcu(PrtouchMcuOps):
         Emulation 16.10.): read_prtouch_pres [oid, 2, 0, 0, 0] (Status,
         len 0), dann is_src=0 (FTR) und is_src=1 (SRC) mit len = 64 - idx.
         Abweichend von Stock (idx fest 0,8,…,56) ist der nächste idx = idx + n
-        (n aus dem Paket, 7-9 Samples, Firmware-Analyse) -> keine Lücken."""
+        (n aus dem Paket, 7-9 Samples, Schnittstellen-Untersuchung) -> keine Lücken."""
         status = self._q_read.send([self.oid, 2, 0, 0, 0])
         out = {"status": {k: status.get(k) for k in
                           ("tri_chxs", "buf_len", "idx", "len")
@@ -1969,20 +1969,20 @@ class KlippyPresMcu(PrtouchMcuOps):
 
     def read_pres(self):
         # BELEGT live 16.10.2026: is_src=1 = Rohwerte (Skala wie Stock-
-        # READ_PRES, ~-1,428e6); ch=0. BELEGT Firmware-Analyse: idx = Index im
+        # READ_PRES, ~-1,428e6); ch=0. BELEGT Schnittstellen-Untersuchung: idx = Index im
         # Schieberegister, 7-9 Samples je Antwort -> read_ring_blocks
         # (idx += n), merge_ring. Rückgabe: Listen (ticks, datas).
         return self._read_ring(1)
 
     def read_pres_filtered(self):
         """is_src=0: gefilterte Werte – genau das, was die Düse gegen
-        min_hold vergleicht (Firmware-Analyse, 0x08003F92)."""
+        min_hold vergleicht (Schnittstellen-Untersuchung, 0x08003F92)."""
         return self._read_ring(0)
 
     def read_status(self):
         """read_prtouch_pres [oid, 2, 0, 0, 0] -> dict(tri_chxs, …).
 
-        B (Firmware-Analyse, 0x08004060-0x0800407A): is_src >= 2 = nur Status,
+        B (Schnittstellen-Untersuchung, 0x08004060-0x0800407A): is_src >= 2 = nur Status,
         Antwort ohne Daten; tri_chxs = Auslösebits. B: tri_chxs
         wird je Sample auf 0 gesetzt und bei Auslösung gesetzt; danach
         acq_tick := 0 (Puffer eingefroren) -> bleibt bis zum nächsten start
@@ -2070,7 +2070,7 @@ class KlippyStepMcu(PrtouchMcuOps):
 
     def read_frozen(self):
         """Diagnose (Stock-Reihenfolge, BELEGT per Emulation): read_prtouch_
-        step [oid, 0, 0], dann len = 64 - idx mit idx += n (Firmware-Analyse)."""
+        step [oid, 0, 0], dann len = 64 - idx mit idx += n (Schnittstellen-Untersuchung)."""
         self._q_read.send([self.oid, 0, 0])
         return {"step": self._read_ring()}
 
@@ -2086,7 +2086,7 @@ class KlippyStepMcu(PrtouchMcuOps):
         raise NotImplementedError("step-MCU hat kein pres")
 
     def read_step(self):
-        # BELEGT Firmware-Analyse: derselbe Encoder wie pres (0x08003E88),
+        # BELEGT Schnittstellen-Untersuchung: derselbe Encoder wie pres (0x08003E88),
         # Schieberegister 64, 7-9 Samples je Antwort -> idx += n.
         return self._read_ring()
 
@@ -2329,7 +2329,7 @@ class K2PrtouchController:
     # --- Scharf schalten (gemeinsamer Code mit dem Probe-Hauptweg) -------
     def _pc7_unarmed(self):
         """PC7 lesen VOR dem Scharfschalten (Signalweg-Test): stop_prtouch_
-        step, ack expar0 = PC7-Rohpegel (B Firmware-Analyse, 0x08004244) –
+        step, ack expar0 = PC7-Rohpegel (B Schnittstellen-Untersuchung, 0x08004244) –
         exakt der Stock-TEST_SWAP-Ablauf. True = ausgelöst (Pegel 0).
         Nur VOR start_prtouch_step zulässig (würde die step-Aufzeichnung
         beenden)."""
@@ -2528,7 +2528,7 @@ class K2PrtouchController:
         moved = False
         try:
             # Stillstand vor dem Scharfschalten (Bezug der Düse = gleitendes
-            # Mittel von vor 37-49 ms, Firmware-Analyse) – wie run_probe.
+            # Mittel von vor 37-49 ms, Schnittstellen-Untersuchung) – wie run_probe.
             self.tool.wait_moves()
             self.waits += 1
             try:
@@ -2850,7 +2850,7 @@ class K2PrtouchProbeCore:
                 "(hart <= %.1f mm/s). Bei G28: homing_speed und "
                 "second_homing_speed in [stepper_z] <= %.1f setzen. "
                 "Keine Bewegung." % (sp, SPEED_MAX, SPEED_MAX))
-        # Firmware-Analyse: zu langsam -> Kraftrampe zu flach -> die Düse
+        # Schnittstellen-Untersuchung: zu langsam -> Kraftrampe zu flach -> die Düse
         # löst nie aus (ANNAHME-Grenze, s. min_probe_speed).
         err = check_probe_speed(sp, self.cfg)
         if err:
@@ -2953,7 +2953,7 @@ class K2PrtouchProbeCore:
                 "Bewegung." % int(ack2.get("err", 0)))
         self.armed = True
         self.arm_count += 1
-        # Totzeit abwarten (Firmware-Analyse): Kontakt innerhalb von
+        # Totzeit abwarten (Schnittstellen-Untersuchung): Kontakt innerhalb von
         # lmt_dead Samples nach start erkennt die Düse NICHT. parse_options
         # erzwingt arm_settle_s >= min_arm_settle_s; hier doppelt (fail-safe).
         self.arm_phase = "settle"
@@ -2966,7 +2966,7 @@ class K2PrtouchProbeCore:
         self.pause(settle)
         self.arm_phase = "rest"
         if c.get("rest_check", True):
-            # Ruhetest erweitert (Firmware-Analyse): Rohwerte (is_src=1)
+            # Ruhetest erweitert (Schnittstellen-Untersuchung): Rohwerte (is_src=1)
             # mit Tickabstand/-1/24 Bit/nicht konstant + gefilterter Kanal
             # (is_src=0) gegen min_hold.
             t, d = self._wrap("read_prtouch_pres is_src=1 (Ruhetest roh)",

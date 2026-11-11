@@ -29,8 +29,8 @@
   liegen **nicht** im Repo (`pack.sh --dicts ORDNER`).
 - `auto_addr_wrapper.py` (Creality-Klartextquelle) ist **nicht** im Repo enthalten; der Port `nachbau/auto_addr.py`
   dokumentiert daraus nur Protokollfakten (Kommandos, Timeouts, Adressverfahren).
-- Hinweise auf Disassembly/Dekompilat (z. B. Funktionsadressen in `BOOTSTART-WERKZEUG.md`) sind eigene
-  Analyseergebnisse, auf Belegstellen gekürzt; keine Creality-Quelltexte.
+- Adressangaben (z. B. in `BOOTSTART-WERKZEUG.md`) sind eigene Belegstellen, auf das Nötigste gekürzt;
+  keine Creality-Quelltexte.
 - Hardware: Herkunft und Lizenz der 3D-Modelle, Footprint-Geometrien und Pinbelegungen stehen in
   [`hardware/k2-pi-cm5-traeger/README.md`](hardware/k2-pi-cm5-traeger/README.md) („3D-Modelle und Lizenzen“).
   Modelle mit ungeklärter Lizenz (LCSC/EasyEDA) sind nicht im Repo.

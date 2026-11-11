@@ -1,4 +1,4 @@
-> **ENTWURF – am echten Gerät UNGETESTET (Stand 18.10.2026).** Klipper-Zusatzmodul `[k2_belt]` für Upstream-Klipper auf einem Pi-Host; nur offline getestet (`python3 test_k2_belt.py`, 13/13 Tests, 361/361 Prüfungen). Seit 18.10.2026 mit den Korrekturen nach statischer Analyse der Belt-Firmware (signed ADC, Messfrische, Busruhe, Sendeschutz – §4a). Entwurf durch einen KI-Agenten.
+> **ENTWURF – am echten Gerät UNGETESTET (Stand 18.10.2026).** Klipper-Zusatzmodul `[k2_belt]` für Upstream-Klipper auf einem Pi-Host; nur offline getestet (`python3 test_k2_belt.py`, 13/13 Tests, 361/361 Prüfungen). Seit 18.10.2026 mit den Korrekturen nach Schnittstellen-Untersuchung der Belt-Firmware (signed ADC, Messfrische, Busruhe, Sendeschutz – §4a).
 
 # [k2_belt] – Riemenspann-Module mdlx/mdly (K2 Plus)
 
@@ -187,7 +187,7 @@ Endschalterschutz – nur mit freier Achse (deshalb `allow_move`).
 
 ## 4a. Korrekturen nach Analyse der Belt-Firmware (18.10.2026)
 
-Grundlage: statische Analyse der Belt-App `bet0_000_001` (CH32V003). Alle Punkte sind **Abweichungen vom Original**;
+Grundlage: Schnittstellen-Untersuchung der Belt-App `bet0_000_001` (CH32V003). Alle Punkte sind **Abweichungen vom Original**;
 mit `max_steps_units: 0xFFFE`, `move_settle: 0`, `measure_discard: 0`,
 `bus_gap: 0` läuft der Port wieder frame- und pausengleich zum Original
 (Test 5 nutzt genau diese Einstellung).

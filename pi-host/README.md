@@ -1,4 +1,4 @@
-> **ENTWURF – am echten Gerät UNGETESTET (Stand 16.10.2026).** Klipper-Zusatzmodul für Upstream-Klipper auf einem Pi-Host; nur offline mit simulierter MCU/Motoren getestet (`python3 test_k2_motor.py`, 17/17 seit Sensorless-Homing §9) und im Batch-Modus gegen Upstream-Klipper 9cb9975 ohne Testpatches (config-pi/README.md §5, Lauf F–I). Upstream-Fix 16.10.2026 abends: §8. Entwurf durch einen weiteren KI-Agenten, Review und drei Korrekturen (Pins vor Connect, gültige print_time, query_gpio_status) durch uns.
+> **ENTWURF – am echten Gerät UNGETESTET (Stand 16.10.2026).** Klipper-Zusatzmodul für Upstream-Klipper auf einem Pi-Host; nur offline mit simulierter MCU/Motoren getestet (`python3 test_k2_motor.py`, 17/17 seit Sensorless-Homing §9) und im Batch-Modus gegen Upstream-Klipper 9cb9975 ohne Testpatches (config-pi/README.md §5, Lauf F–I). Upstream-Fix 16.10.2026 abends: §8. Nach Review drei Korrekturen (Pins vor Connect, gültige print_time, query_gpio_status).
 
 # Klipper-Zusatzmodul [k2_motor] – Bericht (Entwurf, 16.10.2026)
 

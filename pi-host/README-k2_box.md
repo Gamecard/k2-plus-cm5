@@ -1,4 +1,4 @@
-> **ENTWURF – am echten Gerät UNGETESTET (Stand 16.10.2026).** Klipper-Modul [k2_box] für Upstream-Klipper; offline getestet (`python3 test_k2_box.py`, 28/28 inkl. Filamentwechsel §8, Auto-Nachladen §9 und RESUME nach Wechsel-Abbruch §10). Entwurf durch einen weiteren KI-Agenten, von uns geprüft.
+> **ENTWURF – am echten Gerät UNGETESTET (Stand 16.10.2026).** Klipper-Modul [k2_box] für Upstream-Klipper; offline getestet (`python3 test_k2_box.py`, 28/28 inkl. Filamentwechsel §8, Auto-Nachladen §9 und RESUME nach Wechsel-Abbruch §10).
 
 # Klipper-Modul [k2_box] + serial485-Fixes (Entwurf, 16.10.2026)
 
@@ -290,7 +290,7 @@ Fire-and-forget, z.B. `cmd_485_send_data`). Alles unter `_lock`, TTLs
 | Live-Mitschnitt Cut-Kalibrierung 16.10.2026 22:02 | Cut + Retrude 16.10.: Reihenfolge 0x04 [00 01] → 0x08 [00] → p0 (+E-10, hier F350 aus Material) ×3 → p0 → p1, danach „filament_sensor false“ |
 | Live-Messung Kanal A 16.10.2026 | Preload/Einzug/Rückzug-Zeiten (m0 4,4 s, p1 22,4 s, op2 31 s) |
 | Protokollanalyse „M8200-Sequenzen“ | Load P→L→F→O, Unload P→C→R→O, `CR_BOX_PRE_OPT` Pflicht vor EXTRUDE (key60), I=n → TnX; Box blockiert Einzüge, solange ein Slot im Hub steckt |
-| Firmware-Analyse CFS, `nachbau/cfsseq.py` | 0x10-Modi (m7 = Odometer > p mm in 300 ms, sonst 0x0e), 0x11 p0/p1, 0x04 [00 01] löscht ERROR |
+| Schnittstellen-Untersuchung CFS, `nachbau/cfsseq.py` | 0x10-Modi (m7 = Odometer > p mm in 300 ms, sonst 0x0e), 0x11 p0/p1, 0x04 [00 01] löscht ERROR |
 
 **Aufteilung:** Box (RS485) = Rückzug 0x11, Einzug 0x10 + 0x04/0x0f/0x08/0x05,
 Zustand 0x0a. Drucker = Z-Hop, Schneiden (Kopf drückt den Hebel gegen den
@@ -452,7 +452,7 @@ RESUME mitten im Wechsel. Bedienung: `config-pi/README.md`.
 
 ### 10.1 Bewusste Abweichung vom Stock (Ergänzung 17.10.2026 spät)
 
-Stock-Fehlerpfad (aus der Firmware-Analyse von `box_wrapper.so`):
+Stock-Fehlerpfad (aus der Schnittstellen-Untersuchung von `box_wrapper.so`):
 `BoxError.handle_event` nimmt den Z-Hop an der Fehlerposition zurück
 (`G0 Z-{move_z}`), fährt `BOX_MOVE_TO_SAFE_POS` (**erst `G0 Y345`, dann
 `G0 X225`**) und ruft dann `PAUSE` → PAUSE_STATE = **X225/Y345 auf Druck-Z**;
@@ -473,7 +473,7 @@ bewusst ab:
 > unverändert. Bedienung: `config-pi/README.md`. Alles gesperrt
 > ausgeliefert (`allow_write`/`allow_move`/`resume_redo_change` False).
 
-**Stock (aus der Firmware-Analyse):** `BoxSave.recode_err` speichert `resume_tnn` = Ziel-TNN nur für Fehler im T<n>-Pfad
+**Stock (aus der Schnittstellen-Untersuchung):** `BoxSave.recode_err` speichert `resume_tnn` = Ziel-TNN nur für Fehler im T<n>-Pfad
 (nicht `macro_error_list` = M8200-Kette). `RESUME` → `BOX_ERROR_RESUME_PROCESS`
 → `error_resume_process`: CFS an, pausiert, `resume_tnn` gesetzt;
 `clear_err()`; Kopfsensor belegt → Ende ohne Wechsel (live `12:88007`);
@@ -709,7 +709,7 @@ RESUME), Stock-Datei als Startwert nach `install.sh --remain-material`.
 
 > **ENTWURF – am Gerät UNGETESTET.** Stock-Vorbild: Flag
 > `is_use_ending_material`, `extrusion_all_materials`, `box_end`, CFS-Status
-> 0x50 (aus der Firmware-Analyse). Offline: `test_k2_box.py` 59/59; Batch
+> 0x50 (aus der Schnittstellen-Untersuchung). Offline: `test_k2_box.py` 59/59; Batch
 > gegen Upstream-Klipper 34/34.
 
 **Optionen `[k2_box]`** (in `k2-module.cfg` kommentiert)
@@ -843,7 +843,7 @@ Das Betriebsfenster ist jetzt eng wie bei Stock: X ab `cut_pos_x`, Y bis 352, Z 
 ## 15. RFID neu lesen + Slot-Farbe/-Material von Hand (Ergänzung 18.10.2026)
 
 Grundlage: Stock-Befehle `BOX_INFO_REFRESH` und `BOX_MODIFY_TN_DATA`
-(Display/App), Stock `box.cfg:131–138`, Firmware-Analyse von
+(Display/App), Stock `box.cfg:131–138`, Schnittstellen-Untersuchung von
 `box_wrapper.so` (NUM = Slotmaske, NUM=0 → Maske-0-Bursts).
 
 ### 15.1 `KTWO_BOX_RFID [SLOT=T1A..T1D|A..D|0..3|ALL] [FORCE=1]` (= Stock `BOX_INFO_REFRESH`)
@@ -996,7 +996,7 @@ Spülen.
 
 Grundlage: Live-Mitschnitt am Stock-Drucker (Laden, Mechanik, Entladen,
 Stock-Makros `LOAD_MATERIAL*`/`QUIT_MATERIAL*`, zweites Laden),
-Firmware-Analyse `[filament_rack]` (RFID-Leser 0x11, Material-, Heiz- und
+Schnittstellen-Untersuchung `[filament_rack]` (RFID-Leser 0x11, Material-, Heiz- und
 Spüllogik), `nachbau/filament_rack.py`. Ersetzt den
 bisher als „entfällt“ geführten Stock-Abschnitt `[filament_rack]`.
 **Am Gerät getestet 26.10.2026** (Laden, Druck, Entladen – §18.9).
@@ -1146,7 +1146,7 @@ beim Laden; sendet und bewegt nichts; während eines Vorgangs gesperrt.
 ### 18.6 RFID der externen Spule (optional, Default AUS)
 
 - Stock: Sensor `!PA5` (Haupt-MCU) am externen Halter → **ein** Lesebefehl
-  `0x11 [02]` an den RFID-Leser 0x11 (Firmware-Analyse, live beim Laden
+  `0x11 [02]` an den RFID-Leser 0x11 (Schnittstellen-Untersuchung, live beim Laden
   bestätigt).
 - Pi: `[k2_box] extern_rfid: True` **und** in `printer.cfg` den
   auskommentierten `[gcode_button extern_spule]` (`pin: !PA5`, `press_gcode:

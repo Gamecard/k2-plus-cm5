@@ -2,7 +2,7 @@
 
 > **GERÄTETEST OFFEN – nur mit ausdrücklicher Freigabe.** Das Werkzeug ist offline gebaut und mit simuliertem
 > Bus/UART getestet. Am Drucker oder Pi wurde nichts gesendet.
-> Grundlage: Analyse der Creality-Werkzeuge `mcu_util` und `mcu_util_485` (Disassembly/Dekompilat, Literale im Binary)
+> Grundlage: Analyse der Creality-Werkzeuge `mcu_util` und `mcu_util_485`
 > und der Bootloader-Protokolle aus der Protokollanalyse; die Arbeitsdateien liegen nicht im Repo.
 > Keine SN, UID, IP oder Kennungen im Text. Belegstärken: **B** = belegt, **B+L** = belegt und live beobachtet,
 > **V** = Deutung, **ANNAHME** = ungeprüft, **O** = offen.

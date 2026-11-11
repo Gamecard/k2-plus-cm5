@@ -28,7 +28,7 @@ WAS IST DAS „RACK“?
 BELEGFORM
   `Z.<n>` = Cython-__pyx_lineno der Originalquelle filament_rack_wrapper.py
   (aus den Fehlerpfaden des .so; Zuordnung einzelner Operationen ±1 Zeile),
-  `@0x…` = Funktions-/Befehlsadresse im .so (llvm-objdump-vaddr, Basis 0).
+  `@0x…` = Funktions-/Befehlsadresse im .so (Basis 0).
   B = belegt (Code), L = zusätzlich durch Live-Log bestätigt,
   A = ANNAHME (nicht belegt), TODO = offen.
 
@@ -137,7 +137,7 @@ GC_SAVE_HOTEND = ("SET_GCODE_VARIABLE MACRO=PRINTER_PARAM "
 BEEP_CMD = "/usr/bin/beep.sh %s"     # Z.200
 BEEP_DEFAULT_CMD = "/usr/bin/beep.sh 0.2"   # Z.209-210
 
-# Registrierte G-Codes (__init__ Z.92-101, Reihenfolge wie im Binary) (B)
+# Registrierte G-Codes (__init__ Z.92-101, Reihenfolge wie im Original) (B)
 GCODES = {
     "FILAMENT_RACK": "cmd_filament_rack",
     "FILAMENT_RACK_FLUSH": "cmd_filament_rack_flush",

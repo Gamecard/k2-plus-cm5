@@ -19,7 +19,7 @@ Upstream-`[lis2dw]` bricht an der Creality-Firmware ab, mit `Command format mism
 
 Quellen:
 - **D** = MCU-Dictionaries der Creality-Firmware (`mcu-main-F008-GD32F303RET6.dict.json`, `noz-duese-F008-GD32F303CBT6.dict.json`; nicht im Repo). Für lis2dw sind Main und Düse identisch.
-- **FW** = Düsen-Image `noz0_130_G30-noz0_021_000.bin` der Creality-Firmware (nicht im Repo), gleicher Build-String wie das Live-Dictionary. Statisch analysiert (Disassembly).
+- **FW** = Düsen-Image `noz0_130_G30-noz0_021_000.bin` der Creality-Firmware (nicht im Repo), gleicher Build-String wie das Live-Dictionary.
 - **U** = Upstream-Klipper-Quellbaum (Commit 9cb9975).
 
 **Korrektur 22.10.2026:** Die Creality-Host-Quelle liegt im Stock-Dateisystem unter `/usr/share/klipper/klippy/extras/lis2dw.py` (bisher übersehen). Sie bestätigt `CTRL6=0x34`, `FIFO_CTRL=0xC0` (vor dem Start), `CTRL1=0x94`, `rest_ticks = 4/1600 s` und `chip_clock = seq·8 + buffered/6 + fifo + 1`; `CTRL2` schreibt sie nicht. Die Live-Logs zeigen aber die Meldungen und Funktionsnamen des alten Upstream-Moduls (`[lis2dw:_start_measurements:188] lis2dw_dev_id: 44`, `LIS2DW starting 'lis2dw' measurements`, `_finish_measurements:232`, Stock-Log vom 12.10.2026). Das Host-Verhalten wurde deshalb aus der Firmware abgeleitet und nicht aus der Creality-Host-Quelle.
@@ -29,7 +29,7 @@ Quellen:
 | Konfiguration | `config_lis2dw oid=%c spi_oid=%c` (D id 63; FW @0x080037a8: `oid_alloc` 0x4c Byte, `timer.func`=0x080039b9, `spi` @+0x10) | `config_lis2dw oid bus_oid bus_oid_type lis_chip_type` (U `src/sensor_lis2dw.c:110`, `klippy/extras/lis2dw.py:77`), SPI **oder** I2C |
 | Start | `query_lis2dw oid clock rest_ticks`: Start **zum Zeitpunkt `clock`** (FW @0x08004f58: `waketime=args[1]`, `flags=HAVE_START`, `sequence=limit_count=0`). Der Task (@0x0800769c) schreibt dann `FIFO_CTRL=0xC0` (`movw r3,#0xc02e`) | `query_lis2dw oid rest_ticks`, Start sofort (U `sensor_lis2dw.c:221–237`) |
 | Stopp | gleicher Befehl mit `rest_ticks=0`. FW liest ein Sample nach (`fifo_disable=1`), schreibt `FIFO_CTRL=0x00`, liest `FIFO_SAMPLES`, schickt den Restblock und **antwortet mit `lis2dw_status`** | `rest_ticks=0`, ohne Antwort (`send_wait_ack`, U `lis2dw.py:193`) |
-| Lesen | je Timer-Ereignis (alle `rest_ticks`) **ein Sample pro Durchlauf**: 7-Byte-SPI `0xA8…` (Register 0x28–0x2D) und danach 2-Byte `0xAF` (FIFO_SAMPLES). **Korrektur 22.10.2026 (Disassembly):** Ist danach noch etwas im FIFO (`FSS & 0x3f ≠ 0`), schläft die Firmware `rest_ticks`; nur bei **leerem** FIFO weckt sie sich sofort wieder (FW `lis2dw_query` @0x08004e78, §9). Also **1 Sample je Timer** | Block mit 8 Samples per 49-Byte-SPI, wenn `fifo_bytes_pending ≥ 48` (U `sensor_lis2dw.c:160–218`) |
+| Lesen | je Timer-Ereignis (alle `rest_ticks`) **ein Sample pro Durchlauf**: 7-Byte-SPI `0xA8…` (Register 0x28–0x2D) und danach 2-Byte `0xAF` (FIFO_SAMPLES). **Korrektur 22.10.2026 (Schnittstellen-Untersuchung):** Ist danach noch etwas im FIFO (`FSS & 0x3f ≠ 0`), schläft die Firmware `rest_ticks`; nur bei **leerem** FIFO weckt sie sich sofort wieder (FW `lis2dw_query` @0x08004e78, §9). Also **1 Sample je Timer** | Block mit 8 Samples per 49-Byte-SPI, wenn `fifo_bytes_pending ≥ 48` (U `sensor_lis2dw.c:160–218`) |
 | Datenmeldung | `lis2dw_data oid=%c sequence=%hu data=%*s` (D −25). Puffer 48 Byte @+0x1b, Meldung bei `data_count > 42` (also 8 Samples). Sample = **XL,XH,YL,YH,ZL,ZH**, also int16 LE je Achse, 14 bit linksbündig (FW @0x08004e78 Byte-Zuordnung `d[i]=msg[i+1]`, `lis2dw_report` @0x08003454: `sendf(seq, data_count, data)`, dann `seq++`) | `sensor_bulk_data oid sequence data` (U `bulk_sensor.py:115`), gleiche 6-Byte-Samples (`"<hhh"`, U `lis2dw.py:85`), 8 Samples je Block (`MAX_BULK_MSG_SIZE 51 // 6`, U `bulk_sensor.py:203/214`) |
 | Status | `lis2dw_status oid clock query_ticks next_sequence buffered=%c fifo=%c limit_count=%hu` (D −26; FW @0x08004e1c: `time1=DWT_CYCCNT` (0xe0001004), SPI `0xAF`, `time2−time1`, `buffered=data_count`, **`fifo = FSS & 0x1f`**, `limit_count`) | `sensor_bulk_status … buffered=%u possible_overflows=%hu`. `buffered` = Puffer-Bytes **plus FIFO-Bytes** (`fifo & 0x3F`·6), U `sensor_lis2dw.c:137/263`, `sensor_bulk.c:34` |
 | Überlauf | `limit_count++`, wenn FIFO_SAMPLES Bit 6 (OVR) gesetzt ist (FW @0x08004e78) | `possible_overflows++` bei Bit 6 (U `sensor_lis2dw.c:127`) |
@@ -104,7 +104,7 @@ Befehle:
 
 ## 6. Tests
 
-`cd pi-host && python3 test_k2_lis2dw.py` ergibt 64/64 Prüfungen in ca. 2 s, Python 3.14. Die Syntax ist auf 3.9 geprüft, numpy ist optional (nur für `MEASURE_AXES_NOISE`). Geladen wird das Modul als `extras.k2_lis2dw` mit den **echten** Upstream-Modulen `bulk_sensor`, `adxl345`, `lis2dw`, `resonance_tester`, `shaper_calibrate` sowie `msgproto`, `gcode`. Nur `extras.bus` ist eine SPI-Attrappe. Die Düsen-Firmware wird nach dem Dekompilat emuliert (`FwSim`, `ChipSim`).
+`cd pi-host && python3 test_k2_lis2dw.py` ergibt 64/64 Prüfungen in ca. 2 s, Python 3.14. Die Syntax ist auf 3.9 geprüft, numpy ist optional (nur für `MEASURE_AXES_NOISE`). Geladen wird das Modul als `extras.k2_lis2dw` mit den **echten** Upstream-Modulen `bulk_sensor`, `adxl345`, `lis2dw`, `resonance_tester`, `shaper_calibrate` sowie `msgproto`, `gcode`. Nur `extras.bus` ist eine SPI-Attrappe. Die Düsen-Firmware wird nach dem Originalverhalten nachgebildet (`FwSim`, `ChipSim`).
 
 Die Prüfungen decken ab:
 - Formate gegen beide Dictionaries; Upstream-Formate scheitern mit Mismatch.
@@ -164,11 +164,11 @@ Jeder Schritt nur, wenn der vorige bestanden ist. Nach jedem Schritt `klippy.log
 
 ## 9. Messrate: Ursache der ≈ 385 Hz und Fix (22.10.2026)
 
-Live (Phase 1.7, 22.10.2026): Chip-ID 0x44 ok, aber nur **385–388 Samples/s** statt 1600, Lücken 2,5 ms. Analyse nur offline (Disassembly, Stock-Log, Emulation); am Gerät noch nicht nachgemessen.
+Live (Phase 1.7, 22.10.2026): Chip-ID 0x44 ok, aber nur **385–388 Samples/s** statt 1600, Lücken 2,5 ms. Analyse nur offline (Schnittstellen-Untersuchung, Stock-Log, Emulation); am Gerät noch nicht nachgemessen.
 
 | # | Befund | Beleg | Bewertung |
 |---|---|---|---|
-| 1 | `lis2dw_query` liest **je Aufruf genau 1 Sample** (7-Byte-Read 0x28…, dann FIFO_SAMPLES). Bleibt etwas im FIFO (`FSS & 0x3f ≠ 0`), plant sie den Timer **neu (rest_ticks)**; nur bei **leerem** FIFO und `fifo_disable == 0` weckt sie den Task **sofort** wieder. Das ist die umgekehrte Logik zu „FIFO leer lesen“. | Disassembly Düsen-Image (Basis 0x08003000): `0x8004f04 cbnz r7` → `0x8004f0a` (RUNNING?) → `0x8004f1e` `sched_del_timer`, PENDING löschen, `waketime = DWT_CYCCNT + rest_ticks`, `sched_add_timer`; `0x8004f06/08` → `0x8004f44` `sched_wake_task` | **B** |
+| 1 | `lis2dw_query` liest **je Aufruf genau 1 Sample** (7-Byte-Read 0x28…, dann FIFO_SAMPLES). Bleibt etwas im FIFO (`FSS & 0x3f ≠ 0`), plant sie den Timer **neu (rest_ticks)**; nur bei **leerem** FIFO und `fifo_disable == 0` weckt sie den Task **sofort** wieder. Das ist die umgekehrte Logik zu „FIFO leer lesen“. | Untersuchung Düsen-Image (Basis 0x08003000): `0x8004f04 cbnz r7` → `0x8004f0a` (RUNNING?) → `0x8004f1e` `sched_del_timer`, PENDING löschen, `waketime = DWT_CYCCNT + rest_ticks`, `sched_add_timer`; `0x8004f06/08` → `0x8004f44` `sched_wake_task` | **B** |
 | 2 | Lieferrate = 1/(rest_ticks + Laufzeit). Mit Stock-/Host-Wert `rest_ticks = 4/1600 s = 2,5 ms` → ≈ 385/s. Laufzeit je Lesung ≈ 0,1 ms (Ereignis + 2 Soft-SPI-Transfers), abgeleitet aus 385–388 Hz | live 22.10.; Emulation mit 0,1 ms → 384,6/s | **B** (Struktur) / **V** (0,1 ms) |
 | 3 | Stock hatte dieselbe Grenze: `lis2dw_data` ≈ 2,9 kB/s während der Stock-Resonanzmessung (≈ 58 Byte je 8 Samples) → ≈ 400 Samples/s | Stock-Log 12.10. (Statistikzeilen `nozzle_mcu bytes_read`, Fenster `LIS2DW starting`…`finished`) | **V** |
 | 4 | Der FIFO (ODR 1600) läuft voll und überschreibt; geliefert wird je Lesung das **älteste** Sample → Dezimierung des 1600-Hz-Stroms (Schritte 4/5 bei 2,5 ms, 2/3 bei 1,5 ms), konstante Latenz ≈ 17 ms. `limit_count` (Überlauf) steigt dauernd – erwartet. | Emulation `test_k2_lis2dw.py` 6 | **V** (Chip-Verhalten nach Datenblatt-Modell) |

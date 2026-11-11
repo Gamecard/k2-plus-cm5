@@ -850,7 +850,7 @@ UNVERÄNDERTEN Creality-MCU-Firmware genutzt und ersetzt
 `prtouch_v3_wrapper.so`. Kernbefund (BELEGT):
 
 - Die MCU erkennt den Kontakt (Schwellen `min/max/add_hold`, `ned_*`,
-  `tri_chxs`), stoppt aber über die prtouch-Befehle NICHTS (KORREKTUR: der Stopp entsteht über die Swap-Leitung + normalen Endstop, s. Teil A) (Firmware-Analyse: kein
+  `tri_chxs`), stoppt aber über die prtouch-Befehle NICHTS (KORREKTUR: der Stopp entsteht über die Swap-Leitung + normalen Endstop, s. Teil A) (Schnittstellen-Untersuchung: kein
   `stepper_stop_on_trigger`/`trsync`/`endstop_home` in den prtouch-Pfaden;
   Swap Düse→Main nur HIGH bei config/start, Main liest einmal).
 - Der Host fährt zeitgesteuert (live 5 mm/s), zeichnet `pres` 64×0,78 ms
@@ -1016,7 +1016,7 @@ Erstlauf-Reihenfolge: `KTWO_PRTOUCH_TEST_SWAP` → `KTWO_PRTOUCH_READ` →
 2. **clk/sdo-Belegung:** Ableitung aus `pres_cs0_pin` PB13/PB14, Reihenfolge
    per `pres_clk_sdo_swap` (Default PB13=clk, PB14=sdo). BELEGT Negativ:
    stehen NICHT in der Stock-`printer.cfg`; Herkunft aus
-   Wrapper-Build (`adc_par/clk_par/sdo_par`). Nur per Firmware-Analyse
+   Wrapper-Build (`adc_par/clk_par/sdo_par`). Nur per Schnittstellen-Untersuchung
    oder Live-MCU-Mitschnitt beweisbar.
 3. **ned-Mapping:** `pres_tri_fter (5,1,0.8)` → `ned_tftr/hftr/lftr` in
    Format-Reihenfolge. BELEGT Werte/Stellenzahl, ANNAHME Zuordnung.
@@ -1079,7 +1079,7 @@ Erstlauf-Reihenfolge: `KTWO_PRTOUCH_TEST_SWAP` → `KTWO_PRTOUCH_READ` →
    `manual_move`/`wait_moves`-, `SET_KINEMATIC_POSITION`-Signaturen in
    den Upstream-Quellen (`klippy/mcu.py`, `toolhead.py`, `homing.py`,
    `probe.py`, `gcode.py`) gegenlesen. Fakes ersetzen keine API-Prüfung.
-2. **Pins per Firmware-Analyse/Live-Mitschnitt belegen:** `clk/sdo`-Belegung
+2. **Pins per Schnittstellen-Untersuchung/Live-Mitschnitt belegen:** `clk/sdo`-Belegung
    (PB13/PB14-Annahme!), `pres_idx` (0/1 → PB13/PB14), Stepper-OIDs,
    `lmt_dead`/`ned_lftr`-Skalierung, `is_src/sta_swap`-Kodierung. Erst
    mit gezieltem MCU-Debug-Mitschnitt (`start/read/resault/stop/ack`

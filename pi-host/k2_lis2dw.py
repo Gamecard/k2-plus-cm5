@@ -53,7 +53,7 @@ Belege (Details README-k2_lis2dw.md):
     (rest_ticks=0) liest den Rest, schreibt FIFO_CTRL=0x00 und antwortet mit
     ``lis2dw_status``.
 
-Messrate (Disassembly ``lis2dw_query`` @0x08004e78, 22.10.2026): Die
+Messrate (Untersuchung ``lis2dw_query`` @0x08004e78, 22.10.2026): Die
 Firmware liest JE Timer-Ereignis genau EIN Sample und schlaeft dann
 ``rest_ticks``, solange noch Daten im FIFO liegen (FIFO_SAMPLES & 0x3f != 0
 -> neuer Timer, 0x8004f04/0x8004f1e). Nur wenn der FIFO LEER gelesen wird,

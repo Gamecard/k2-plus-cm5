@@ -1744,11 +1744,11 @@ class KlippyGpio(GpioOps):
     Controller ruft ``sync()`` nach jedem Setzen vor Broadcast/Weiterlesen.
     Gekapselt hinter GpioOps (Tests mit FakePrinter prüfen print_time>0).
 
-    REVIEW 3 (query_stub – FIX) + Firmware-Analyse 16.10.2026 (Abfrage-OID):
+    REVIEW 3 (query_stub – FIX) + Schnittstellen-Untersuchung 16.10.2026 (Abfrage-OID):
     ``query_gpio_status oid=%c gpio_pin=%c`` → ``gpio_status oid=%c status=%c``
     per ``mcu.lookup_query_command``. Dictionary (mcu-main-F008-
     GD32F303RET6.dict.json): Befehl 75 + Antwort -20 vorhanden, KEIN
-    zugehöriger ``config_*``-Befehl. Disassembly des Main-MCU-Images
+    zugehöriger ``config_*``-Befehl. Untersuchung des Main-MCU-Images
     (Stock ``mcu0_140_G32-mcu0_022_000.bin``, Basis 0x08003000, Befehlstabelle
     @0x0800743C, 12-Byte-Einträge; die Handler-Adresse zu einem Info-Wort
     (Byte0 = msgid) steht 12 Byte WEITER – eine naiv erzeugte Handler-Liste
@@ -2878,7 +2878,7 @@ class K2MotorController:
     def check_protection(self, motors=None):
         """0C [0b] an alle (Stock MOTOR_CHECK_PROTECTION_AFTER_HOME DATA=11,
         E transparent). -> {motor: dict|str}; dict = decode_protection_local,
-        str = Fehlertext (Timeout/Port). Seiteneffekt laut Firmware-Analyse: bei
+        str = Fehlertext (Timeout/Port). Seiteneffekt laut Schnittstellen-Untersuchung: bei
         Stall-Mode 2 quittiert [0b] die Notfall-Leitung (Codes bleiben) – so
         auch Stock direkt nach DATA=2."""
         out = {}
