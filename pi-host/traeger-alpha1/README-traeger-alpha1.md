@@ -1,7 +1,8 @@
 # Umstieg auf den K2-CM5-Träger Alpha 1 – Softwarepaket und Anleitung
 
-> **ALPHA – am Gerät UNGETESTET (Stand 24.10.2026).** Der Träger ist noch nicht gefertigt. Alles hier ist offline
-> geprüft (`test_traeger_config.py`, `test_k2_stromausfall.py`, `../test_k2_485.py`), nicht am Drucker.
+> **ALPHA – seit 09.11.2026 an einem Drucker in Betrieb (Stand 11.11.2026).** Mit `install-traeger.sh` auf dem
+> Träger installiert: RS485 über UART0 mit Kernel-RS485 (`rs485_de: kernel`), CAN, Stromausfall-Wächter,
+> `config.txt` – alles läuft. Offline-Tests: `test_traeger_config.py`, `test_k2_stromausfall.py`, `../test_k2_485.py`.
 > Hardware: `hardware/k2-pi-cm5-traeger/` (README, KONZEPT, Schaltplan-Generator `generator/k2_traeger.py`).
 > Stand des Layouts: **Umbau „Weg A“** – kein Toolhead-Stecker J9, keine eFuse, GPIO6/GPIO26 frei, Eingangssicherung
 > F1 = 3 A, INA226 nur noch 0x40 und 0x41.

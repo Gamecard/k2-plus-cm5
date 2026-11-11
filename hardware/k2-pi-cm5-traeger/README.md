@@ -3,9 +3,9 @@
 > **ALPHA – NUR FÜR TESTZWECKE – NICHT FÜR DEN KOMMERZIELLEN EINSATZ – NUTZUNG AUF EIGENE GEFAHR.**
 > Lizenz und Haftungsausschluss: siehe [`../LIZENZ-UND-HAFTUNG.md`](../LIZENZ-UND-HAFTUNG.md).
 
-> **Status (29.10.2026): Alpha 1 – Layout vollständig geroutet, DRC/ERC 0 Fehler, alle Wächter grün; Fertigungsdaten
-> (Leiterplatte und Bestückung) zur Fertigung freigegeben, am Drucker noch nicht geprüft.** Was vor der Fertigung zu
-> klären war, ist erledigt; offen sind vor allem Prüfungen am ersten Muster – siehe [Offene Punkte](#offene-punkte) am Ende.
+> **Status (11.11.2026): Alpha 1 – gefertigt (JLC), seit 09.11.2026 an einem Drucker in Betrieb.** Layout
+> DRC/ERC 0 Fehler. Am Gerät geprüft: Versorgung aus den 24 V des Druckers, beide MCUs über das Original-Flachkabel, RS485 über den Treiber der Platine (Motor-Init aller fünf Motoren, CFS-Box), Strommessung (INA226 24 V und 5 V), CAN-Controller erkannt, Stromausfall-Erkennung, beide Kamera-USB, erste Drucke mit CFS-Wechsel. **Offen:** DSI-Display (Hintergrundlicht/Touch antworten nicht, Ursache offen), Ethernet, CAN mit angeschlossenem Teilnehmer, CM5-Temperatur unter Dauerlast (passiver Kühler, bisher 63–66 °C, keine Drosselung).
+> Weitere Punkte: [Offene Punkte](#offene-punkte) am Ende.
 
 > **Unterlagen:** [Fertigungshinweise](#fertigungshinweise-leiterplatte-und-bestückung) · [`EINKAUFSLISTE.md`](EINKAUFSLISTE.md) (alles außer JLC) · [`AUFBAU-UND-INBETRIEBNAHME.md`](AUFBAU-UND-INBETRIEBNAHME.md)
 > (Messungen in 12 Etappen) · [`KOMPROMISSE-UND-OFFENE-PUNKTE.md`](KOMPROMISSE-UND-OFFENE-PUNKTE.md) · Software:

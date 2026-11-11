@@ -91,7 +91,7 @@ Messprotokoll) und [`PI-INBETRIEBNAHME.md`](PI-INBETRIEBNAHME.md) Phase 0.
 - Klipper: `install.sh` stellt einen älteren Checkout auf den geprüften Upstream-Stand **ee2c6fb** (Abschnitt 4);
   ein **neuerer** Stand, der ee2c6fb enthält, bleibt stehen. Zum PID-Hinweis: Abschnitt 5, Schritt 9.
 
-### 1.3 Künftig: Trägerplatine „K2-CM5-Träger Alpha 1“ (ungetestet)
+### 1.3 Trägerplatine „K2-CM5-Träger Alpha 1“ (Alpha, seit 09.11.2026 in Betrieb)
 
 Ordner [`hardware/k2-pi-cm5-traeger/`](hardware/k2-pi-cm5-traeger/README.md). Der Träger ersetzt das T113 an dessen
 Befestigungspunkten und trägt den CM5 direkt (ohne IO-Board). Das Original-Flachkabel steckt dort in einem eigenen
@@ -99,9 +99,8 @@ Stecker; Breakout, Steckbrücken und USB-RS485-Adapter entfallen. Geplant sind u
 Druckers, RS485-Treiber auf der Platine, CAN, Anschluss für ein DSI-Display, Kamera-USB und eine
 Stromausfall-Erkennung.
 
-**Stand:** Layout fertig, **noch nicht gefertigt und nicht am Drucker geprüft**. Die Software-Anpassungen
-(u. a. anderer RS485-Port, CAN, Stromausfall-Wächter) liegen als Paket in
-[`pi-host/traeger-alpha1/`](pi-host/traeger-alpha1/README-traeger-alpha1.md) – ebenfalls **am Gerät ungetestet**.
+**Stand (11.11.2026):** gefertigt, seit 09.11.2026 an einem Drucker in Betrieb. Am Gerät geprüft: Versorgung aus den 24 V des Druckers, beide MCUs über das Original-Flachkabel, RS485 über den Treiber der Platine (Motor-Init aller fünf Motoren, CFS-Box), Strommessung (INA226 24 V und 5 V), CAN-Controller erkannt, Stromausfall-Erkennung, beide Kamera-USB, erste Drucke mit CFS-Wechsel. **Offen:** DSI-Display (Hintergrundlicht/Touch antworten nicht, Ursache offen), Ethernet, CAN mit angeschlossenem Teilnehmer, CM5-Temperatur unter Dauerlast (passiver Kühler, bisher 63–66 °C, keine Drosselung). Die Software-Anpassungen (u. a. anderer RS485-Port, CAN, Stromausfall-Wächter) liegen als Paket in
+[`pi-host/traeger-alpha1/`](pi-host/traeger-alpha1/README-traeger-alpha1.md) und laufen auf dem Träger.
 Alpha, CC BY-NC-SA 4.0.
 
 ---
@@ -701,5 +700,5 @@ Noch nicht umgesetzt bzw. nicht möglich (Stand 24.10.2026):
 | [`pi-host/README.md`](pi-host/README.md) | Module, insbesondere Motor-Init (`k2_motor`) |
 | `pi-host/README-k2_*.md` | je Modul: CFS (`k2_box`), Kraftsensor (`k2_prtouch`), Riemen (`k2_belt`), Beschleunigungssensor (`k2_lis2dw`), Sicherheit (`k2_safety`), Kammer (`k2_chamber`), Fahrgrenzen (`k2_limits`), Düsen-Temperaturkompensation (`k2_nozzle_tempcomp`), Wiedereinstieg (`k2_resume`), Dateiprüfung (`k2_dateipruefung`), Konsole (`k2_konsole`) |
 | [`hardware/LIZENZ-UND-HAFTUNG.md`](hardware/LIZENZ-UND-HAFTUNG.md) | Lizenz und Haftungsausschluss der Hardware-Entwürfe |
-| [`hardware/k2-pi-cm5-traeger/README.md`](hardware/k2-pi-cm5-traeger/README.md) | Trägerplatine Alpha 1 (ungetestet) |
-| [`pi-host/traeger-alpha1/README-traeger-alpha1.md`](pi-host/traeger-alpha1/README-traeger-alpha1.md) | Softwarepaket und Umstiegsanleitung für die Trägerplatine (ungetestet) |
+| [`hardware/k2-pi-cm5-traeger/README.md`](hardware/k2-pi-cm5-traeger/README.md) | Trägerplatine Alpha 1 (seit 09.11.2026 in Betrieb) |
+| [`pi-host/traeger-alpha1/README-traeger-alpha1.md`](pi-host/traeger-alpha1/README-traeger-alpha1.md) | Softwarepaket und Umstiegsanleitung für die Trägerplatine (am Träger in Betrieb) |

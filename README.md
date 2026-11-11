@@ -24,8 +24,8 @@ Funktion.
 |---|---|
 | Software (`pi-host/`, `nachbau/`) | läuft auf **CM5 + Waveshare CM5-IO-BASE-B** mit Breakout-Verdrahtung am Original-Flachkabel. Am Gerät erprobt (22.–23.10.2026): Klipper „ready“ mit beiden MCUs, Motor-Init, X/Y-Homing, Kraftsensor-Antastung, Bett ausrichten und Mesh, PID, Input Shaper, Riemenspannung, CFS-Laden/-Entladen/-Wechsel, einfarbiger Druck und ein Mehrfarbdruck (Creality-Print-7-Datei, 182 Wechsel) |
 | Offen | u. a. Dual-Z-Lichtschranken, einige Druckfälle (PAUSE/RESUME, Restmaterial, Stall-Überwachung), `k2-bootstart` am Gerät – siehe [`SCHNELLSTART-K2-PLUS.md`](SCHNELLSTART-K2-PLUS.md) §9 und [`PI-INBETRIEBNAHME.md`](PI-INBETRIEBNAHME.md) Anhang D |
-| Trägerplatine „K2-CM5-Träger Alpha 1“ (`hardware/k2-pi-cm5-traeger/`) | Layout fertig (DRC/ERC 0 Fehler), **noch nicht gefertigt und nicht am Drucker geprüft** |
-| Softwarepaket zur Trägerplatine (`pi-host/traeger-alpha1/`) | nur offline geprüft, **am Gerät ungetestet** |
+| Trägerplatine „K2-CM5-Träger Alpha 1“ (`hardware/k2-pi-cm5-traeger/`) | gefertigt, **seit 09.11.2026 an einem Drucker in Betrieb** (RS485, beide MCUs, CFS, Strommessung, CAN-Controller, Stromausfall-Erkennung, Kamera-USB geprüft); offen: DSI-Display, Ethernet, CAN mit Teilnehmer, Dauerlast-Temperatur – Details in der [Platinen-README](hardware/k2-pi-cm5-traeger/README.md) |
+| Softwarepaket zur Trägerplatine (`pi-host/traeger-alpha1/`) | auf dem Träger installiert und **in Betrieb** (seit 09.11.2026) |
 
 ## Zwei Aufbauwege
 
@@ -38,7 +38,7 @@ CM5-IO-BASE-B), FFC-Breakout am Original-Flachkabel, vier UART-Leitungen mit 1 k
 3. [`PI-INBETRIEBNAHME.md`](PI-INBETRIEBNAHME.md) – Fahrplan Phase 0–12 mit Erwartungswerten, Not-Aus-Stufen,
    Schalterstand und Rückweg zum Original.
 
-**B – Trägerplatine (ungetestet).** Der Träger sitzt an den Befestigungspunkten des T113, trägt den CM5
+**B – Trägerplatine (Alpha, seit 09.11.2026 an einem Drucker in Betrieb).** Der Träger sitzt an den Befestigungspunkten des T113, trägt den CM5
 direkt und nimmt das Original-Flachkabel auf; versorgt wird er aus den 24 V des Druckers. Breakout, Steckbrücken und
 USB-RS485-Adapter entfallen.
 
@@ -79,7 +79,7 @@ eine eigene Leak-Muster-Liste für `pack.sh`).
 | [`pi-host/`](pi-host/README.md) | Klipper-Module `k2_*.py`, Offline-Tests `test_k2_*.py`, je Modul eine `README-k2_*.md` |
 | [`pi-host/config-pi/`](pi-host/config-pi/README.md) | Klipper-Konfiguration des K2 Plus (`printer.cfg`, Makros, Module, Homing, Z-Ausrichtung) mit Bedienhinweisen |
 | [`pi-host/install/`](pi-host/install/README.md) | `pack.sh` (Paket bauen), `install.sh`/`uninstall.sh`, `k2-identify.py`, `k2-bootstart.py`, Start-Wächter, Creality-Brücke, Web-Anpassungen, Tests |
-| [`pi-host/traeger-alpha1/`](pi-host/traeger-alpha1/README-traeger-alpha1.md) | Softwarepaket für die Trägerplatine (ungetestet) |
+| [`pi-host/traeger-alpha1/`](pi-host/traeger-alpha1/README-traeger-alpha1.md) | Softwarepaket für die Trägerplatine (am Träger in Betrieb) |
 | `nachbau/` | Python-Nachbau der Creality-Protokolle (RS485-Bus, CFS-Box, Motoren, Adressvergabe, Bootstart, Spülen, Materialdatenbank); `ref-hi/` = Testvektoren |
 | [`hardware/k2-pi-cm5-traeger/`](hardware/k2-pi-cm5-traeger/README.md) | Trägerplatine Alpha 1: Generator, KiCad-Projekt, Fertigungsdaten in `ausgabe/`, Bestell- und Aufbauanleitung |
 | [`hardware/LIZENZ-UND-HAFTUNG.md`](hardware/LIZENZ-UND-HAFTUNG.md) | Lizenz (CC BY-NC-SA 4.0) und Haftungsausschluss der Hardware |
