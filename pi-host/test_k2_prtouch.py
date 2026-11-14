@@ -3689,6 +3689,115 @@ def test_1018_a8_can_brk_context():
           bad and len([c_ for c_ in calls if c_[0] != "script"]) == 7)
 
 
+def test_1113_antast_protokoll():
+    """13.11.2026: Fahrweg aus Schrittlagen, G28-Z-Gegenprüfung (Versuch 2
+    muss homing_retract_dist fahren), Protokoll auch im Fehlerpfad."""
+    tr = K.descent_travel_mm({"stepper_z": 10.0, "stepper_z1": 10.0},
+                             {"stepper_z": 5.0, "stepper_z1": 5.01})
+    check("(1113) Fahrweg je Stepper, abwärts positiv",
+          abs(tr["stepper_z"] - 5.0) < 1e-9
+          and abs(tr["stepper_z1"] - 4.99) < 1e-9)
+    ev = K.evaluate_home_attempt
+    check("(1113) Versuch 1 wird nicht bewertet",
+          ev(1, 2.0, 5.0)[0] == "skip")
+    check("(1113) ohne Rückzug keine Bewertung",
+          ev(2, 2.0, 0.0)[0] == "skip" and ev(2, 2.0, None)[0] == "skip")
+    check("(1113) Versuch 2 = Rückzug -> ok", ev(2, 5.02, 5.0)[0] == "ok")
+    st, txt = ev(2, 1.5, 5.0)
+    check("(1113) Versuch 2 zu kurz -> Fehlauslösung, Nullpunkt zu hoch",
+          st == "frueh_v2" and "3.50" in txt and "WARNUNG" in txt, txt)
+    check("(1113) Versuch 2 zu lang -> Versuch 1 war früh",
+          ev(2, 8.0, 5.0)[0] == "frueh_v1")
+    check("(1113) Grenze Toleranz",
+          ev(2, 5.0 - K.HOME_CHECK_TOL_MM + 1e-6, 5.0)[0] == "ok"
+          and ev(2, 5.0 - K.HOME_CHECK_TOL_MM - 1e-3, 5.0)[0]
+          == "frueh_v2")
+
+    # Helfer ohne Klipper: Fakes für printer/gcode/toolhead/stepper
+    class St:
+        def __init__(s, name, steps):
+            s.name, s.steps = name, steps
+        def get_name(s):
+            return s.name
+        def get_mcu_position(s):
+            return s.steps
+        def get_step_dist(s):
+            return 0.0025
+    zs = [St("stepper_z", 4000), St("stepper_z1", 4000)]
+    msgs = []
+    class G:
+        def respond_info(s, m):
+            msgs.append(m)
+    class TH:
+        def get_position(s):
+            return [175.0, 175.0, 5.0, 0.0]
+    class R:
+        t = 100.0
+        def monotonic(s):
+            R.t += 0.5
+            return R.t
+    class P:
+        def lookup_object(s, n):
+            return {"gcode": G(), "toolhead": TH()}[n]
+        def get_reactor(s):
+            return R()
+    class MP:
+        def get_steppers(s):
+            return zs
+    class GC:
+        def __init__(s, a):
+            s.a = a
+        def get(s, k, d=None):
+            return s.a if k == "HOME_ATTEMPT_NUM" else d
+    h = object.__new__(K.K2DescendHelper)
+    h.printer, h.mcu_probe, h.retract_dist = P(), MP(), 5.0
+    h.last_descent = h.last_home_check = None
+    h.get_rest_filt = lambda: 2082
+    # G28 Versuch 2 löst schon nach 1,5 mm aus (600 Schritte à 0,0025)
+    rec = h._descent_begin(GC("2"), True, [175.0, 175.0, -10.0, 0.0])
+    for s in zs:
+        s.steps -= 600
+    h._descent_end(rec, True, 0.0)
+    st = h.get_status()
+    check("(1113) Helfer: G28 V2 zu früh erkannt + gemeldet",
+          st["last_home_check"]["status"] == "frueh_v2"
+          and abs(st["last_descent"]["travel"]["stepper_z"] - 1.5) < 1e-9
+          and any("WARNUNG G28 Z" in m for m in msgs)
+          and any("Ruhe gefiltert max 2082" in m for m in msgs), msgs)
+    # Antasten ohne Auslösung: Fehlerpfad protokolliert Fahrweg, Konsole
+    msgs.clear()
+    rec = h._descent_begin(GC(None), False, [5.0, 175.0, -3.0, 0.0])
+    for s in zs:
+        s.steps -= 3200  # 8 mm
+    h._descent_end(rec, False, None)
+    st = h.get_status()
+    check("(1113) Helfer: No-trigger-Fahrt protokolliert (8 mm, Konsole)",
+          st["last_descent"]["ok"] is False
+          and abs(st["last_descent"]["travel"]["stepper_z1"] - 8.0) < 1e-9
+          and any("KEINE Auslösung" in m and "Ziel -3.000" in m
+                  for m in msgs)
+          and st["last_home_check"]["status"] == "frueh_v2", msgs)
+    # Mesh-Punkt ok -> nur Log, keine Konsole
+    msgs.clear()
+    rec = h._descent_begin(GC(None), False, [100.0, 100.0, -3.0, 0.0])
+    for s in zs:
+        s.steps -= 2000
+    h._descent_end(rec, True, 0.02)
+    check("(1113) Helfer: erfolgreiches Antasten nicht in die Konsole",
+          msgs == [])
+    # Protokoll darf nie werfen (kaputter Stepper)
+    class Kaputt:
+        def get_steppers(s):
+            raise RuntimeError("weg")
+    h.mcu_probe = Kaputt()
+    try:
+        rec = h._descent_begin(GC("1"), True, [0, 0, 0, 0])
+        h._descent_end(rec, False, None)
+        check("(1113) Helfer wirft nie", True)
+    except Exception as exc:
+        check("(1113) Helfer wirft nie", False, str(exc))
+
+
 def main():
     test_live_ring_read()
     test_swap_mechanism()
@@ -3737,6 +3846,7 @@ def main():
     test_1018_a8_can_brk_context()
     test_1018_e2_hot_probe()
     test_1022_fan_damping()
+    test_1113_antast_protokoll()
     print("\n%d bestanden, %d fehlgeschlagen" % (len(PASS), len(FAIL)))
     if FAIL:
         print("FEHLER:", FAIL)

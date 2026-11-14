@@ -345,6 +345,11 @@ class K2Chamber:
             if self.fault:
                 raise gcmd.error("k2_chamber: Warten abgebrochen – %s"
                                  % (self.fault_msg,))
+            # Sofort-Abbruch (k2_abbruch, 14.11.2026): offener Abbruch
+            # beendet das Warten mit G-Code-Fehler
+            ab = self.printer.lookup_object('k2_abbruch', None)
+            if ab is not None:
+                ab.pruefen("Warten auf die Kammer")
             temp, target = self.heater.get_temp(eventtime)
             if target <= 0.:
                 raise gcmd.error("k2_chamber: Warten abgebrochen – Ziel der "

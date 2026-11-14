@@ -798,6 +798,16 @@ Schacht, Box nach IDLE), Entladen am Druckende (Schnitt + Rückzug,
 Rückzugslänge bis in die Box), mechanische Folge des bisherigen Rückzugs
 bei leerem Einlauf (Vergleich).
 
+**Temperatur beim Entladen am Druckende/Abbruch (13.11.2026):** Klippers `M109` wartet auch
+beim *Abkühlen*, bis die Düse auf ±1 K am Ziel ist. Live 13.11.: PETG-Druck mit 250 °C,
+Material-Temperatur 220 °C → beim Abbruch ~40 s Warten (Abkühlen, Unterschwingen auf 218,6 °C,
+Nachheizen). Seitdem gilt während `KTWO_BOX_END_PRINT` (auch für dessen CUT/RETRUDE): Ist die Düse
+schon mindestens so heiß wie die Material-Temperatur (− 3 K, `END_HEAT_TOL`), wird ohne Warten
+bei der aktuellen Temperatur entladen (`M104 S<max(Material, Ist)>` hält sie dort; Konsole:
+„Druckende: Düse … – Entladen bei … °C ohne Warten“). Ist sie kälter, heizt `M109` wie bisher auf
+die Material-Temperatur. Abweichung von Stock `box_end` (heizt/kühlt auf Material-Temperatur).
+Test: `test_end_print_heiss_ohne_warten`.
+
 ## 13. Stock-Retry bei 0x0c + Temperatur-Guard (Ergänzung 18.10.2026)
 
 Quelle: Abgleich mit `gitstonelabs/creality-cfs-klipper` (Hi-Mitschnitt).

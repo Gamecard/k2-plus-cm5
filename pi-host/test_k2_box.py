@@ -558,6 +558,8 @@ class FakePrinter:
             "axis_maximum": [352.5, 400.0, 360.0, 0.0]}
         self.objects["gcode_move"].status = {"gcode_position": list(self.pos)}
         self.objects["extruder"].status = {"target": self.target}
+        if getattr(self, "ist_temp", None) is not None:  # 13.11.2026
+            self.objects["extruder"].status["temperature"] = self.ist_temp
 
     def sim(self, line):
         """Minimale G-Code-Simulation (nur was die Wechsel-Tests brauchen)."""
@@ -4544,6 +4546,44 @@ def test_end_print_unload():
             "Fehler = Meldung ohne Pause; Restmaterial am Druckende ausgespült")
 
 
+def test_end_print_heiss_ohne_warten():
+    """13.11.2026: Druckende/Abbruch – Düse schon heißer als die
+    Material-Temperatur -> M104 auf Ist (gerundet) ohne Warten, KEIN M109
+    (Klipper-M109 wartet auch abwärts, live ~40 s). Zu kalt -> M109 wie
+    bisher. Ist-Temperatur unbekannt -> M109 wie bisher."""
+    def lauf(ist):
+        bus, printer, mod, ctl, pieces = _ending_hull(
+            hub=0x02, end_print_unload="True")
+        ctl.loaded_slot = "B"
+        bus.slots["A"]["filament"] = True
+        bus.state, bus.print_frame_status = 2, 0x00
+        printer.ist_temp = ist
+        n0 = len(printer.gcode.scripts)
+        g = FakeGcmd({})
+        mod.cmd_end_print(g)
+        return printer.gcode.scripts[n0:], g.infos, printer
+    # heiß (PETG-Druck 250 °C, Material 220): halten bei 250, kein M109
+    sc, infos, pr = lauf(249.6)
+    assert not [l for l in sc if l.startswith("M109")], sc
+    i_hold = sc.index("M104 S250")
+    i_cut = sc.index("G0 X-7.8 Y200 F30000")
+    assert sc.index("G0 X133 F12000") < i_hold < i_cut, sc
+    assert any("ohne Warten" in m and "250" in m for m in infos), infos
+    assert "M104 S210" in sc[i_cut:], "END_OPT: Ziel vor dem Druckende zurück"
+    assert not pr.paused
+    # knapp drunter (Toleranz 3 K): auch ohne Warten, Ziel = Material
+    sc, infos, pr = lauf(217.5)
+    assert "M104 S220" in sc and not [l for l in sc if l.startswith("M109")]
+    # zu kalt -> wie bisher M109 auf Material-Temperatur
+    sc, infos, pr = lauf(180.0)
+    assert "M109 S220" in sc, sc
+    # unbekannt -> wie bisher
+    sc, infos, pr = lauf(None)
+    assert "M109 S220" in sc, sc
+    return "250 °C -> M104 S250 ohne Warten; 217,5 -> M104 S220; " \
+           "180 / unbekannt -> M109 S220"
+
+
 def test_ending_config_makro():
     c = K.parse_options(test_options())
     # A5 (18.10.2026): Stock entlädt am Druckende immer -> Default True
@@ -5647,11 +5687,12 @@ def test_c4_c5_c6_makros():
     assert any("KTWO_BOX_PRINT_END fehlgeschlagen" in m
                for m in printer.gcode.raw), printer.gcode.raw
     assert not mod.get_status()["print_hold"] and len(bus.calls) == bus_calls
-    # CANCEL_PRINT-Makro: END_PRINT CANCEL=1 -> BASE -> CANCEL_RESET
+    # CANCEL_PRINT-Makro: (Sofort-Abbruch-Merker verwerfen, 14.11.2026)
+    # -> END_PRINT CANCEL=1 -> BASE -> CANCEL_RESET
     pr = _rprinter(param, kcfg)
     out, _m = _render(env, macros, "CANCEL_PRINT", pr)
-    assert out == ["END_PRINT CANCEL=1", "CANCEL_PRINT_BASE",
-                   "KTWO_BOX_CANCEL_RESET"], out
+    assert out == ["_PI_ABBRUCH_PUNKT AKTION=RESET", "END_PRINT CANCEL=1",
+                   "CANCEL_PRINT_BASE", "KTWO_BOX_CANCEL_RESET"], out
     k2 = {"end_print_unload": True, "ending_material": False}
     pr = _rprinter(param, kcfg, k2_box=k2, pause_resume={"is_paused": False})
     out, _m = _render(env, macros, "END_PRINT", pr, {"CANCEL": "1"})
@@ -6873,6 +6914,8 @@ TESTS = [
     ("Restmaterial: KTWO_BOX_ENDING PURGE=1 (von Hand)", test_ending_hand_purge),
     ("Druckende: end_print_unload an/aus, Fehler ohne Pause",
      test_end_print_unload),
+    ("Druckende: heiße Düse entlädt ohne Abkühl-Warten (13.11.2026)",
+     test_end_print_heiss_ohne_warten),
     ("Restmaterial/Druckende: Optionen, k2-module.cfg, END_PRINT-Makro",
      test_ending_config_makro),
     ("Stock-Retry bei 0x0c (Controller, == Live-Log)", test_extrude_stock_retry),

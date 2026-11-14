@@ -472,6 +472,9 @@ CHANGE_INT_KEYS = ("wipe_shakes", "max_temp_flush_times", "max_tube_length")
 # PrinterK2Box._ending_purge).
 ENDING_PIECE_MM = 80.0
 ENDING_COOL_TEMP = 140.0
+# Druckende-Entladen: Düse gilt als heiß genug, wenn Ist >= Material − 3 K
+# (Klipper-M109-Fenster ±1 K, Reserve für Messrauschen; 13.11.2026)
+END_HEAT_TOL = 3.0
 FLUSH_MODES = ("color", "fixed", "matrix")
 # Düsen-Material persistent:
 # Default-Pfad (leer = aus); Stock: /mnt/UDISK/creality/userdata/box/
@@ -4842,6 +4845,15 @@ class PrinterK2Box:
         # es auch bei einem Abbruch während M109 stimmt – M109 setzt das Ziel
         # vor dem Warten). END_OPT stellt es wieder her, _fail gibt es an
         # PAUSE (CFS_TEMP, s. _pause_temp). Nicht lesbar -> 0.0 (= unbekannt).
+        # Druckende/Abbruch (KTWO_BOX_END_PRINT, auch dessen CUT/RETRUDE):
+        # nur nach oben warten, s. _heat_end.
+        if self._end_print:
+            self._heat_end(gcmd, temp)
+            return
+        self._heat_wait(gcmd, temp)
+
+    def _heat_wait(self, gcmd, temp):
+        """M109 S<temp> (wartet in Klipper auf ±1 K, auch abwärts)."""
         ch = self.chain
         if ch.get("active") and ch.get("orig_target") is None:
             t = self._extruder_target()
@@ -4850,6 +4862,48 @@ class PrinterK2Box:
             if ch.get("active"):
                 ch["temp_changed"] = True
                 ch["last_heat"] = float(temp)
+
+    def _extruder_temp(self):
+        """Aktuelle Ist-Temperatur der Düse in °C, None = nicht lesbar."""
+        st = self._obj_status("extruder")
+        if "temperature" not in st:
+            return None
+        try:
+            return float(st.get("temperature"))
+        except Exception:
+            return None
+
+    def _heat_end(self, gcmd, temp):
+        """Heizen fürs Entladen am Druckende/Abbruch: nur nach OBEN warten
+        (13.11.2026). M109 wartet in Klipper auch beim
+        Abkühlen auf ±1 K – live 13.11. (PETG-Druck 250 °C, Material 220 °C)
+        kostete das ~40 s pro Abbruch (Abkühlen inkl. Unterschwingen auf
+        218,6 °C und Nachheizen). Ist die Düse schon mindestens so heiß wie
+        die Material-Temperatur (− END_HEAT_TOL), wird bei der aktuellen
+        Temperatur geschnitten/zurückgezogen: M104 S<max(Material, Ist)>
+        ohne Warten (hält die Düse dort, statt sie während Schnitt/Rückzug
+        abkühlen zu lassen). Zu kalt -> wie bisher M109 S<Material>.
+        Abweichung von Stock box_end (dort Material-Temperatur)."""
+        cur = self._extruder_temp()
+        if cur is None or cur < float(temp) - END_HEAT_TOL:
+            self._heat_wait(gcmd, temp)
+            return
+        hold = max(float(temp), float(int(round(cur))))
+        ch = self.chain
+        if ch.get("active") and ch.get("orig_target") is None:
+            t = self._extruder_target()
+            ch["orig_target"] = 0.0 if t is None else t
+        if self._move(gcmd, "Temperatur halten", ["M104 S%s" % _n(hold)],
+                      wrap=False):
+            if ch.get("last_heat") is None or \
+                    abs(float(ch.get("last_heat")) - hold) > 0.01:
+                gcmd.respond_info(
+                    "[k2_box] Druckende: Düse %s °C ≥ Material-Temperatur %s "
+                    "°C – Entladen bei %s °C ohne Warten (kein Abkühlen)"
+                    % (_n(round(cur, 1)), _n(temp), _n(hold)))
+            if ch.get("active"):
+                ch["temp_changed"] = True
+                ch["last_heat"] = hold
 
     def _cut_missing(self, gcmd, name):
         """Schnittschutz (22.10.2026) für Einzel-RETRUDE/UNLOAD AUSSERHALB

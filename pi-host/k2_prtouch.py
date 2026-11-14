@@ -117,6 +117,7 @@ verloren. Die Temperatur-/Notfall-Config-Warnungen des Rückfall-Antastens
 ``info``) und erscheinen jetzt als ``// [k2_prtouch] Warnung: …``.
 """
 
+import logging
 import math
 import os
 import statistics
@@ -2737,6 +2738,95 @@ def compute_probe_target_z(cur_z, z_min, max_travel, is_homing):
     return max(float(z_min), float(cur_z) - float(max_travel))
 
 
+# ---------------------------------------------------------------------
+# Antast-Protokoll + G28-Z-Gegenprüfung (13.11.2026)
+# ---------------------------------------------------------------------
+# Anlass: 26.10., 11.11. und 13.11.2026 „No trigger on probe after full
+# movement“ beim Z-Ausgleich links (X5/Y175), jeweils direkt nach einem
+# heißen G28 Z mit verrauschtem Ruhetest. Verdacht: das G28 Z löste zu früh
+# (vor dem Bettkontakt) aus -> Z-Nullpunkt zu hoch. Bisher wurde nirgends
+# geloggt, wo ausgelöst wurde.
+#
+# Gemessen wird der TATSÄCHLICHE Fahrweg der Z-Motoren aus den MCU-
+# Schrittlagen (stepper.get_mcu_position() × step_dist) vor und nach der
+# Fahrt. Die Schrittlage läuft über G28 (set_position) hinweg stetig weiter,
+# ist also innerhalb einer Klipper-Sitzung eine absolute Bett-Höhe.
+#
+# Gegenprüfung OHNE zusätzliche Fahrt: Upstream-Homing tastet zweimal an
+# (HOME_ATTEMPT_NUM 1/2) und fährt dazwischen homing_retract_dist zurück
+# (K2: 5 mm). Lösen beide Versuche am selben Bettkontakt aus, fährt Versuch 2
+# genau homing_retract_dist. Deutlich weniger = Versuch 2 löste zu früh aus
+# (Nullpunkt zu hoch); deutlich mehr = Versuch 1 löste zu früh aus (dann ist
+# Versuch 2 maßgeblich und der Nullpunkt in Ordnung).
+# Nur Meldung, KEIN Abbruch (Verhalten unverändert).
+HOME_CHECK_TOL_MM = 0.3  # ANNAHME: Nachgeben Düse/Bett bei Kontakt << 0,1 mm
+
+
+def descent_travel_mm(before, after):
+    """Fahrweg je Z-Stepper [mm] aus Schrittlagen {name: mm} vor/nach.
+    Positiv = abwärts gefahren (Düse Richtung Bett). Fehlende Namen
+    werden übergangen."""
+    out = {}
+    for name, b in before.items():
+        if name in after:
+            out[name] = float(b) - float(after[name])
+    return out
+
+
+def evaluate_home_attempt(attempt, travel, retract_dist,
+                          tol=HOME_CHECK_TOL_MM):
+    """Gegenprüfung des 2. G28-Z-Versuchs.
+
+    attempt: HOME_ATTEMPT_NUM als int (oder None), travel: Fahrweg [mm] des
+    Versuchs (Mittel der Z-Stepper), retract_dist: homing_retract_dist.
+    Gibt (status, text) zurück; status in {"skip", "ok", "frueh_v2",
+    "frueh_v1"}."""
+    if attempt != 2 or travel is None or not retract_dist:
+        return "skip", ""
+    diff = float(travel) - float(retract_dist)
+    if abs(diff) <= tol:
+        return "ok", ("G28 Z plausibel: Versuch 2 fuhr %.3f mm (Rückzug "
+                      "%.1f mm, Abweichung %+.3f mm)"
+                      % (travel, retract_dist, diff))
+    if diff < 0:
+        return "frueh_v2", (
+            "WARNUNG G28 Z: Versuch 2 löste nach %.3f mm aus, erwartet "
+            "%.1f mm (Rückzug) – %.3f mm ZU FRÜH. Verdacht Fehlauslösung "
+            "vor dem Bettkontakt: Z-Nullpunkt liegt um bis zu %.2f mm zu "
+            "hoch (Düse in Wahrheit weiter weg). Erneut G28 Z ausführen."
+            % (travel, retract_dist, -diff, -diff))
+    return "frueh_v1", (
+        "Hinweis G28 Z: Versuch 2 fuhr %.3f mm statt %.1f mm (+%.3f mm) – "
+        "Versuch 1 hatte zu früh ausgelöst; maßgeblich ist Versuch 2, "
+        "Nullpunkt vermutlich in Ordnung."
+        % (travel, retract_dist, diff))
+
+
+def format_descent_line(rec):
+    """Eine Protokollzeile für klippy.log/Konsole aus dem Messdatensatz."""
+    kind = ("G28 Z Versuch %s" % rec["attempt"]) if rec["homing"] \
+        else "Antasten"
+    trav = rec.get("travel") or {}
+    trav_txt = ", ".join("%s %.3f" % (k, v) for k, v in sorted(trav.items()))
+    absz = rec.get("abs_after") or {}
+    abs_txt = ", ".join("%s %.3f" % (k, v) for k, v in sorted(absz.items()))
+    parts = ["[k2_prtouch] %s bei X%.1f Y%.1f: %s" % (
+        kind, rec["x"], rec["y"],
+        "ausgelöst" if rec["ok"] else "KEINE Auslösung")]
+    if not rec["homing"]:
+        parts.append("Z %.3f -> %s (Ziel %.3f)" % (
+            rec["z_start"],
+            ("%.3f" % rec["z_end"]) if rec.get("z_end") is not None
+            else "?", rec["z_target"]))
+    parts.append("Fahrweg [mm] %s" % (trav_txt or "?"))
+    if rec.get("duration_s") is not None:
+        parts.append("%.2f s" % rec["duration_s"])
+    if rec.get("rest_filt") is not None:
+        parts.append("Ruhe gefiltert max %d" % rec["rest_filt"])
+    parts.append("Schrittlage [mm] %s" % (abs_txt or "?"))
+    return "; ".join(parts)
+
+
 class K2PrtouchProbeCore:
     """Antast-Sitzung für den Upstream-Probe-Weg (probe.py-Session-API).
 
@@ -2793,6 +2883,10 @@ class K2PrtouchProbeCore:
         # Lüfterdämpfung (FanDamper) für die Dauer einer Sitzung bzw. der
         # Vorabprüfung. None = aus (Tests, fan_damping: False).
         self.fan_damper = None
+        # Sofort-Abbruch (k2_abbruch, 14.11.2026): wird von [k2_abbruch]
+        # gesetzt; vor jedem Antasten außerhalb von G28 aufgerufen, wirft
+        # bei offenem Abbruch einen G-Code-Fehler (Mesh/Z-Tilt brechen ab).
+        self.abort_check = None
         # Grenze der Rohwert-Spanne im Ruhetest; None = rest_max_dif. Der
         # Probe-Hauptweg setzt rest_max_dif_probe (Rückfallweg unverändert).
         self.rest_max_dif = None
@@ -3059,6 +3153,10 @@ class K2PrtouchProbeCore:
         return self
 
     def run_probe(self, gcmd):
+        # Sofort-Abbruch: nur außerhalb von G28 (ein Fehler in G28 schaltet
+        # die Motoren ab -> Bett sackt ab); VOR jeder Bewegung.
+        if self.abort_check is not None and gcmd.get_command() != "G28":
+            self.abort_check()
         params = self.check_allowed(gcmd)
         # Düse in Ruhe scharf schalten (Schwelle relativ zum Ruhewert beim
         # Scharfschalten, BELEGT Fingerdruck-Test):
@@ -3645,6 +3743,15 @@ class K2DescendHelper:
         self.manual_probe = manual_probe_mod
         self.z_min_position = probe_mod.lookup_minimum_z(config)
         self.results = []
+        # Antast-Protokoll/Gegenprüfung (s. evaluate_home_attempt):
+        try:
+            self.retract_dist = config.getsection("stepper_z").getfloat(
+                "homing_retract_dist", 5., note_valid=False)
+        except Exception:
+            self.retract_dist = None
+        self.last_descent = None   # letzter Messdatensatz (Status)
+        self.last_home_check = None  # (status, text) des letzten G28 Z
+        self.get_rest_filt = None  # vom Kern gesetzt: letzter Ruhewert
         # Z-Stepper an den Endstop hängen (trsync stoppt sie in der MCU):
         probe_mod.LookupZSteppers(config, self.mcu_probe.add_stepper)
 
@@ -3661,11 +3768,91 @@ class K2DescendHelper:
             is_homing)
         phoming = self.printer.lookup_object("homing")
         check_movement = not phoming.check_probe_first_home(gcmd)
-        ppos = phoming.probing_move(self.mcu_probe, pos, speed,
-                                    check_movement=check_movement)
+        rec = self._descent_begin(gcmd, is_homing, pos)
+        try:
+            ppos = phoming.probing_move(self.mcu_probe, pos, speed,
+                                        check_movement=check_movement)
+        except BaseException:
+            self._descent_end(rec, False, None)
+            raise
+        self._descent_end(rec, True, ppos[2])
         offsets = self.probe_offsets.get_offsets()
         self.results.append(self.manual_probe.create_probe_result(ppos,
                                                                   offsets))
+
+    # --- Antast-Protokoll (nur messen/melden, nie bewegen) ---------------
+    def _z_abs(self):
+        """{stepper: Schrittlage [mm]} der Z-Stepper (aktuelle Soll-Lage)."""
+        out = {}
+        try:
+            for s in self.mcu_probe.get_steppers():
+                out[s.get_name()] = s.get_mcu_position() * s.get_step_dist()
+        except Exception as exc:
+            logging.info("k2_prtouch: Schrittlage nicht lesbar: %s", exc)
+        return out
+
+    def _descent_begin(self, gcmd, is_homing, target):
+        try:
+            attempt = gcmd.get("HOME_ATTEMPT_NUM", None)
+            attempt = int(attempt) if attempt is not None else None
+        except Exception:
+            attempt = None
+        cur = self.printer.lookup_object("toolhead").get_position()
+        rest = None
+        if self.get_rest_filt is not None:
+            try:
+                rest = self.get_rest_filt()
+            except Exception:
+                rest = None
+        return {"homing": bool(is_homing), "attempt": attempt,
+                "x": float(cur[0]), "y": float(cur[1]),
+                "z_start": float(cur[2]), "z_target": float(target[2]),
+                "abs_before": self._z_abs(), "rest_filt": rest,
+                "t0": self.printer.get_reactor().monotonic()}
+
+    def _descent_end(self, rec, ok, z_end):
+        """Messung abschließen, loggen, ggf. G28-Z-Gegenprüfung melden.
+        Darf NIE eine Ausnahme werfen (läuft auch im Fehlerpfad)."""
+        try:
+            rec["ok"] = bool(ok)
+            rec["z_end"] = None if z_end is None else float(z_end)
+            rec["abs_after"] = self._z_abs()
+            rec["travel"] = descent_travel_mm(rec["abs_before"],
+                                              rec["abs_after"])
+            rec["duration_s"] = (self.printer.get_reactor().monotonic()
+                                 - rec.pop("t0"))
+            line = format_descent_line(rec)
+            logging.info(line)
+            gcode = self.printer.lookup_object("gcode")
+            # Konsole nur bei G28 Z und Fehlern (Mesh-Punkte nur ins Log)
+            if rec["homing"] or not ok:
+                gcode.respond_info(line)
+            if rec["homing"]:
+                trav = list(rec["travel"].values())
+                mean = sum(trav) / len(trav) if trav and ok else None
+                st, txt = evaluate_home_attempt(rec["attempt"], mean,
+                                                self.retract_dist)
+                if st != "skip":
+                    rec["home_check"] = st
+                    self.last_home_check = (st, txt)
+                    logging.info("[k2_prtouch] %s", txt)
+                    gcode.respond_info("[k2_prtouch] %s" % txt)
+            self.last_descent = rec
+        except Exception as exc:
+            logging.exception("k2_prtouch: Antast-Protokoll fehlgeschlagen: "
+                              "%s", exc)
+
+    def get_status(self):
+        rec = self.last_descent
+        if rec is None:
+            return {"last_descent": None, "last_home_check": None}
+        keep = ("homing", "attempt", "ok", "x", "y", "z_start", "z_end",
+                "z_target", "travel", "abs_after", "duration_s",
+                "rest_filt", "home_check")
+        chk = self.last_home_check
+        return {"last_descent": {k: rec.get(k) for k in keep},
+                "last_home_check": None if chk is None
+                else {"status": chk[0], "text": chk[1]}}
 
     def pull_trigger_positions(self):
         res = self.results
@@ -3743,6 +3930,7 @@ class K2PrtouchPrinterProbe:
         self.core.descend = K2DescendHelper(
             config, self.mcu_probe, self.probe_offsets, cfg, probe_mod,
             manual_probe_mod)
+        self.core.descend.get_rest_filt = self._rest_filt
         self.probe_session = probe_mod.SampleAveragingHelper(
             config, self.param_helper, self.mcu_probe.start_probe_session)
         self.cmd_helper = probe_mod.ProbeCommandHelper(
@@ -3783,9 +3971,20 @@ class K2PrtouchPrinterProbe:
     def get_offsets(self, gcmd=None):
         return self.probe_offsets.get_offsets(gcmd)
 
+    def _rest_filt(self):
+        """Gefiltertes Ruherauschen des letzten Scharfschaltens (Kern)."""
+        last = self.core.last or {}
+        rest = (last.get("arm") or {}).get("rest") or {}
+        val = rest.get("filt_max_abs")
+        return None if val is None else int(val)
+
     def get_status(self, eventtime):
         st = self.cmd_helper.get_status(eventtime)
         st["k2_prtouch"] = self.core.get_status()
+        try:
+            st["k2_prtouch"].update(self.core.descend.get_status())
+        except Exception:
+            pass
         return st
 
     def start_probe_session(self, gcmd):
