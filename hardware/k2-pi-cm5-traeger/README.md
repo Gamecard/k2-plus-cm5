@@ -451,3 +451,23 @@ zugeordnet. Begründungen und Quellen ausführlich: [`KOMPROMISSE-UND-OFFENE-PUN
 3. **Stecker weg von den Platinenkanten**, an denen der Hersteller Fertigungsränder anfügt (bei JLC die Seiten der
    Richtung unter 70 mm), bzw. ≥ 2,5–3 mm Abstand; Nutzen und Trennart (gefräste Schlitze + Mouse Bites) selbst
    vorgeben statt nur als Hinweis im Auftrag. Am besten als Prüfregel im Generator.
+4. **Mehr Display-Unterstützung: 4 statt 2 DSI-Datenleitungen und ein 5-V-Ausgang** (Nachtrag 14.11.2026). Auf
+   Alpha 1 ist der Display-Anschluss J12 auf ein einziges Display zugeschnitten: Er hat nur **2 der 4
+   DSI-Datenleitungen** (D0/D1; D2/D3 sind nicht angeschlossen) und liefert nur 3,3 V. Damit gehen nur Displays, die mit
+   2 Datenleitungen auskommen und sich allein aus dem DSI-Kabel versorgen (z. B. Waveshare 4,3"). **Nicht** möglich sind:
+   - Displays, die alle 4 Datenleitungen brauchen – meist solche mit höherer Auflösung oder Bildrate,
+   - Displays mit eigenem 5-V-Kabel (Raspberry Pi Touch Display 1/2, viele 5"/7"-Panels).
+
+   Alpha 2:
+   - **alle 4 DSI-Datenleitungen (D0–D3) verlegen.** Der 22-polige Stecker (Pin 11/12 = D2, Pin 14/15 = D3) und der
+     CM5 (MIPI1, 4 Lanes) haben sie bereits – auf Alpha 1 fehlen nur die beiden Leitungspaare dazwischen. Gleiche Regeln
+     wie für D0/D1: 100-Ω-Paare, ohne Via, Länge auf Takt und D0/D1 abgeglichen.
+   - **5-V-Ausgang für das Display:** 2-pol. JST neben J12, eigene Absicherung, ≥ 1 A, am besten per GPIO schaltbar.
+
+   Notbehelf an Alpha 1 (nur für die 5 V, nicht für die fehlenden Datenleitungen): 5 V am Messpad TP3 („5V“, CM5_5V)
+   abgreifen.
+
+   *Begriff „Datenleitung“ (englisch „Lane“):* ein Leitungspaar, über das die Bilddaten vom CM5 zum Display laufen. Der
+   Takt hat ein eigenes Paar zusätzlich. Je mehr Lanes, desto mehr Bilddaten pro Sekunde – also höhere Auflösung oder
+   Bildrate. Welche Lane-Zahl ein Display braucht, steht in seinem Datenblatt bzw. in der Treiber-Einstellung
+   (`dtoverlay`). Ein Display für 2 Lanes läuft auch an einem Anschluss mit 4 Lanes, umgekehrt nicht.
