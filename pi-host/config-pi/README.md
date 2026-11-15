@@ -146,6 +146,7 @@ cp pi-host/k2_transport.py pi-host/k2_485.py pi-host/k2_box.py \
 cp pi-host/k2_motor_init.py $E/k2_motor.py          # Dateiname = Abschnitt [k2_motor]!
 mkdir -p $E/k2_nachbau && cp nachbau/*.py $E/k2_nachbau/
 cp pi-host/k2_chamber.py $E/      # Pflicht: [k2_chamber] in printer.cfg (L6, 18.10.2026)
+cp pi-host/k2_fanwatch.py pi-host/k2_mesh_guard.py $E/   # [k2_fanwatch], [k2_mesh_guard] in k2-module.cfg (15.11.2026)
 cp pi-host/k2_lis2dw.py $E/       # [k2_lis2dw] in printer.cfg (§7.8)
 # optional, nur für zalign.cfg Variante B (A10, ab Testschritt T4, §7.7):
 # cp pi-host/k2_zalign.py $E/

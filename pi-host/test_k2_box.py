@@ -3115,9 +3115,11 @@ def test_flush_ablauf_stock():
     assert "M109 S250" in sc and "TEMPERATURE_WAIT SENSOR=extruder MINIMUM=265" not in sc
     assert ext[0] == "G1 E18 F360" and ext[1] == "G1 E72 F432" \
         and ext[-1].endswith("F360"), ext
-    # Reihenfolge: M106 S50 -> M109 -> je Abschnitt Extrusion -> Blasen ->
-    # Reinigung; Kreise NUR nach dem letzten
-    i_fan = sc.index("M106 P0 S50")
+    # Reihenfolge: M106 -> M109 -> je Abschnitt Extrusion -> Blasen ->
+    # Reinigung; Kreise NUR nach dem letzten. Seit 15.11.2026 für PETG
+    # Lüfter S0 statt Stock S50 (flush_fan_materials).
+    assert "M106 P0 S50" not in sc
+    i_fan = sc.index("M106 P0 S0")
     assert i_fan < sc.index("M109 S250"), sc[:12]
     g2 = [i for i, l in enumerate(sc) if l.startswith("G2 ")]
     last_e = max(i for i, l in enumerate(sc) if l.startswith("G1 E"))
@@ -4823,6 +4825,94 @@ def test_extrude_retry_huelle():
         (printer2.paused, mod2.chain_error)
     assert sum(1 for c in bus2.calls if c[1] == 0x11) == 1
     return "Reinigung vor mode-4-Neustart, Neuversuch gemeldet, Dauerfehler -> PAUSE"
+
+
+def test_flush_luefter_je_material():
+    """15.11.2026 (Idee aus K2 OpenKlipper): Bauteillüfter beim Spülen je
+    Material – PETG/PET/PCTG/ABS/ASA 0, sonst Stock flush_fan_start 50;
+    Tabelle änderbar, 'aus' = immer Stock."""
+    def lauf(tnn, slot, **opt):
+        bus, printer, mod, ctl = _flush_hull(**opt)
+        mod.remain_material = {"type": "190001", "color": "0FFFFFF",
+                               "tnn": "T1A"}
+        ctl.loaded_slot = slot
+        n0 = len(printer.gcode.scripts)
+        g = FakeGcmd({"TNN": tnn})
+        mod.cmd_flush(g)
+        return printer.gcode.scripts[n0:], g
+    # PETG (C): S0 + Meldung
+    sc, g = lauf("T1C", "C")
+    assert "M106 P0 S0" in sc and "M106 P0 S50" not in sc, sc[:10]
+    assert any("Bauteillüfter S0 für PETG" in m for m in g.infos), g.infos
+    # 'aus': Stock S50, keine Meldung
+    sc, g = lauf("T1C", "C", flush_fan_materials="aus")
+    assert "M106 P0 S50" in sc and "M106 P0 S0" not in sc
+    assert not any("flush_fan_materials" in m for m in g.infos), g.infos
+    # eigener Wert überschreibt die Tabelle
+    sc, g = lauf("T1C", "C", flush_fan_materials="PETG=30")
+    assert "M106 P0 S30" in sc, sc[:10]
+    # Tabelle/Parser
+    t = K.parse_flush_fan_materials("")
+    assert t == K.FLUSH_FAN_MATERIALS_DEFAULT and t["PETG"] == 0.0
+    assert K.parse_flush_fan_materials(" AUS ") == {}
+    t = K.parse_flush_fan_materials("tpu=20; pla-cf = 40")
+    assert t["TPU"] == 20.0 and t["PLA-CF"] == 40.0 and t["ABS"] == 0.0
+    assert K.material_name_temp(t, "PETG-CF") == 0.0      # Basis vor dem '-'
+    assert K.material_name_temp(t, "PLA") is None
+    for bad in ("PETG", "PETG=x", "PETG=300", "=5"):
+        try:
+            K.parse_flush_fan_materials(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("nicht abgelehnt: %r" % (bad,))
+    try:
+        build_hull(flush_fan_materials="PETG=999")
+    except Exception:
+        pass
+    else:
+        raise AssertionError("Config-Fehler nicht gemeldet")
+    return ("PETG S0 statt S50 (Meldung), 'aus' = Stock, eigener Wert, "
+            "Parser/Grenzen, Basisname vor '-'")
+
+
+def test_orca_filament_id():
+    """15.11.2026 (Idee aus K2 OpenKlipper): lane_data mit filament_id des
+    Orca-Profils „Generic <Typ>“; unbekannter Typ -> '' (Orca sucht wie
+    bisher nach dem Typ); abschaltbar."""
+    assert K.orca_filament_id("PETG") == "OFYPdQJh"       # 10.11. bestätigt
+    assert K.orca_filament_id("pctg") == "OFu1evlr"
+    assert K.orca_filament_id("ABS") == "OFY9muEs"
+    assert K.orca_filament_id("PLA") == "OFDSrzZ8"
+    assert K.orca_filament_id("PLA Silk") == K.orca_filament_id("pla-silk") \
+        == "OFi6PfUM"
+    assert K.orca_filament_id("Wunderstoff") == "" and K.orca_filament_id(None) == ""
+    slots = {"A": {"type": "PETG", "color": "0112233"},
+             "B": {"type": "Wunderstoff", "color": "0FFFFFF"}, "C": {}}
+    alt = K.orca_lane_data(slots)
+    assert "filament_id" not in alt["lane1"], alt       # ohne Schalter wie bisher
+    neu = K.orca_lane_data(slots, None, True)
+    assert neu["lane1"] == {"lane": "0", "color": "#112233",
+                            "material": "PETG", "filament_id": "OFYPdQJh"}, neu
+    assert neu["lane2"]["filament_id"] == "" and neu["lane2"]["material"] \
+        == "Wunderstoff"
+    assert neu["lane3"] == {"lane": "2", "color": "", "material": "",
+                            "filament_id": ""}, neu["lane3"]
+    # Typname aus der Material-DB (mat_name) bestimmt die ID
+    neu = K.orca_lane_data({"A": {"type": "190001", "color": "0FFFFFF"}},
+                           lambda k: "PLA", True)
+    assert neu["lane1"]["material"] == "PLA" and neu["lane1"]["filament_id"] \
+        == "OFDSrzZ8"
+    # Option: Default an, abschaltbar
+    bus, printer, mod = build_hull()
+    assert mod.cfg["orca_filament_ids"] is True
+    bus, printer, mod = build_hull(orca_filament_ids="False")
+    assert mod.cfg["orca_filament_ids"] is False
+    # IDs: 8 Zeichen, beginnen mit OF, alle verschieden
+    ids = list(K.ORCA_GENERIC_IDS.values())
+    assert all(len(i) == 8 and i.startswith("OF") for i in ids) \
+        and len(set(ids)) == len(ids), ids
+    return "Generic-IDs (4 bestätigt), unbekannt = '', lane_data mit/ohne, Option"
 
 
 def test_extrude_stillstand_kopfsensor():
@@ -7105,6 +7195,9 @@ TESTS = [
      test_ending_config_makro),
     ("Stock-Retry bei 0x0c (Controller, == Live-Log)", test_extrude_stock_retry),
     ("Stock-Retry bei 0x0c (KTWO_BOX_EXTRUDE-Hülle)", test_extrude_retry_huelle),
+    ("Spülen: Bauteillüfter je Material (15.11.2026)",
+     test_flush_luefter_je_material),
+    ("lane_data mit Orca-Filament-ID (15.11.2026)", test_orca_filament_id),
     ("0x0c beim Einzug: Kopfsensor meldet Filament -> angekommen (15.11.2026)",
      test_extrude_stillstand_kopfsensor),
     ("Reststück im Kopf durchschieben (15.11.2026)",

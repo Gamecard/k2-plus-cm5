@@ -1407,6 +1407,72 @@ def material_name_temp(table, key):
     return None
 
 
+# Bauteillüfter beim Spülen je Material (15.11.2026, Idee aus K2
+# OpenKlipper): Stock startet das Spülen immer mit M106 P0 S50
+# (flush_fan_start). Bei PETG/ABS kühlt das den austretenden Strang so
+# stark, dass er sich aufrollt und an der Düse hängen bleibt -> für diese
+# Materialien Lüfter aus (0). Wert = S-Wert 0-255 wie flush_fan_start.
+# Das Blasen am Ende (flush_blow) bleibt unverändert.
+FLUSH_FAN_MATERIALS_DEFAULT = {
+    "PETG": 0.0, "PET": 0.0, "PCTG": 0.0, "ABS": 0.0, "ASA": 0.0,
+}
+FLUSH_FAN_MATERIALS_OFF = ("aus", "none", "off", "-")
+
+
+def parse_flush_fan_materials(raw):
+    """'PETG=0, TPU=30' -> Tabelle (Default + Änderungen); 'aus' -> leer
+    (alle Materialien flush_fan_start). ValueError bei kaputtem Eintrag oder
+    Wert außerhalb 0-255."""
+    txt = str(raw or "").strip()
+    if txt.lower() in FLUSH_FAN_MATERIALS_OFF:
+        return {}
+    out = dict(FLUSH_FAN_MATERIALS_DEFAULT)
+    for part in txt.replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise ValueError("flush_fan_materials: '%s' – erwartet "
+                             "NAME=Lüfterwert" % part)
+        name, val = part.split("=", 1)
+        name = name.strip().upper()
+        try:
+            v = float(val)
+        except ValueError:
+            raise ValueError("flush_fan_materials: '%s' – Lüfterwert keine "
+                             "Zahl" % part)
+        if not name or not 0.0 <= v <= 255.0:
+            raise ValueError("flush_fan_materials: '%s' – Name leer oder "
+                             "Wert nicht 0-255" % part)
+        out[name] = v
+    return out
+
+
+# Orca-Filament-ID je Materialtyp (15.11.2026, Idee aus K2 OpenKlipper):
+# OrcaSlicer ab 2.5.0 wählt beim Synchronisieren das Profil mit der
+# filament_id des Fachs; ohne ID sucht es nur nach dem Typ und nimmt notfalls
+# das erste sichtbare Profil (Befund 10.11.2026: PETG wurde zu ABS). IDs der
+# Orca-Systemprofile „Generic <Typ>“ (OrcaSlicer 2.5.0, resources/profiles;
+# vier davon am 10.11.2026 im eigenen Sync bestätigt: PCTG, PETG, ABS, PLA).
+# Unbekannter Typ -> keine ID (Orca sucht wie bisher nach dem Typ).
+ORCA_GENERIC_IDS = {
+    "PLA": "OFDSrzZ8", "PETG": "OFYPdQJh", "PCTG": "OFu1evlr",
+    "ABS": "OFY9muEs", "ASA": "OFLPAxz3", "TPU": "OFgbpcy9",
+    "PA": "OFg8ndtj", "PC": "OFLakOUI", "PET": "OF6MOPWx",
+    "PP": "OF1UNk9P", "PVA": "OFDvXujf", "BVOH": "OFo2UF2C",
+    "HIPS": "OFsFon5l", "PLA-CF": "OFWbdGsC", "PETG-CF": "OFoYSJKi",
+    "PA-CF": "OFQLcbps", "ASA-CF": "OF53eLVD", "PET-CF": "OFQdaVZS",
+    "PLA-SILK": "OFi6PfUM",
+}
+
+
+def orca_filament_id(typ):
+    """Typname -> Orca-ID des Profils „Generic <Typ>“ oder '' (exakt, ohne
+    Groß/klein; Leerzeichen wie Bindestrich: 'PLA Silk' = 'PLA-SILK')."""
+    k = "-".join(str(typ or "").strip().upper().split())
+    return ORCA_GENERIC_IDS.get(k, "")
+
+
 # Fachbelegung für OrcaSlicer (10.11.2026). Orca liest beim „Synchronisieren“
 # den Moonraker-Namespace lane_data (MoonrakerPrinterAgent::
 # fetch_moonraker_filament_data): je Eintrag "lane" (Fach 0-basiert, als
@@ -1416,9 +1482,10 @@ ORCA_LANE_URL_DEFAULT = "http://127.0.0.1:7125"
 ORCA_LANE_INTERVAL = 5.0
 
 
-def orca_lane_data(slots, mat_name=None):
+def orca_lane_data(slots, mat_name=None, with_ids=False):
     """_slot_material_status() -> {"lane1": {...}, …, "lane4": {...}}.
-    mat_name(key) -> Typname oder None (Material-DB); sonst der Typ selbst."""
+    mat_name(key) -> Typname oder None (Material-DB); sonst der Typ selbst.
+    with_ids: zusätzlich "filament_id" (orca_filament_id, '' = unbekannt)."""
     out = {}
     for i, letter in enumerate(SLOT_LETTERS):
         info = (slots or {}).get(letter) or {}
@@ -1430,6 +1497,8 @@ def orca_lane_data(slots, mat_name=None):
             "lane": str(i),
             "color": ("#" + col[-6:].upper()) if len(col) >= 6 else "",
             "material": typ}
+        if with_ids:
+            out["lane%d" % (i + 1)]["filament_id"] = orca_filament_id(typ)
     return out
 
 
@@ -2163,6 +2232,11 @@ def parse_options(opts):
         # Wechseltemperatur je Materialname außerhalb eines Drucks
         # (10.11.2026); leer = eingebaute Tabelle MATERIAL_TEMPS_DEFAULT.
         "material_temps": _str("material_temps", ""),
+        # 15.11.2026: Bauteillüfter beim Spülen je Materialname (leer =
+        # eingebaute Tabelle FLUSH_FAN_MATERIALS_DEFAULT, "aus" = immer
+        # flush_fan_start) und Orca-Filament-ID in lane_data.
+        "flush_fan_materials": _str("flush_fan_materials", ""),
+        "orca_filament_ids": _bool("orca_filament_ids", True),
         # Reinigung je Abschnitt: stock = Blech zwischen den Abschnitten,
         # Silikon-Kreise nur am Ende; legacy = volles Abstreifen nach jedem
         "flush_clean": _str("flush_clean", "stock").lower(),
@@ -2329,7 +2403,8 @@ def parse_klipper_config(config):
                "resume_redo_change", "material_database", "flush_mode",
                "remain_material_file", "flush_clean", "flush_blow", "flush_blow_fan",
                "flush_clog_check", "ending_material_purge", "end_print_unload",
-               "end_print_clear_load_error", "cancel_interrupt", "filament_source_file", "extern_rfid")
+               "end_print_clear_load_error", "cancel_interrupt", "filament_source_file", "extern_rfid",
+               "flush_fan_materials", "orca_filament_ids")
               + tuple(CHANGE_DEFAULTS)):
         if k not in opts:
             v = _g(k, None)
@@ -3340,6 +3415,8 @@ class PrinterK2Box:
         try:
             self.mat_temps = parse_material_temps(
                 self.cfg.get("material_temps"))
+            self.flush_fans = parse_flush_fan_materials(
+                self.cfg.get("flush_fan_materials"))
         except ValueError as exc:
             raise config.error("[k2_box] Config-Fehler: %s" % (exc,))
         self._orca_sent = {}
@@ -3868,7 +3945,8 @@ class PrinterK2Box:
         if not self._orca_busy:
             try:
                 data = orca_lane_data(self._slot_material_status(),
-                                      self._orca_name)
+                                      self._orca_name,
+                                      bool(self.cfg.get("orca_filament_ids")))
             except Exception as exc:
                 data = {}
                 self.orca_last = "Fehler: %s" % (exc,)
@@ -6360,9 +6438,22 @@ class PrinterK2Box:
             gcmd.respond_info("[k2_box] FLUSH: Blasen übersprungen – "
                               "[output_pin %s] fehlt" % (blow_fan,))
         fan_en = self._pin(blow_fan + "_en") if fan is not None else None
-        if fan is not None and c["flush_fan_start"] > 0:
+        # Lüfter beim Spülen: Stock S50, je Material übersteuert (15.11.2026,
+        # flush_fan_materials – PETG/ABS … 0, sonst rollt sich der Strang auf)
+        fan_start = float(c["flush_fan_start"])
+        new_key = pl.get("new_key")
+        mat = (self._orca_name(new_key) or new_key) if new_key else None
+        fan_mat = material_name_temp(getattr(self, "flush_fans", None), mat)
+        if fan_mat is not None:
+            fan_start = fan_mat
+        if fan is not None and (fan_start > 0 or fan_mat is not None):
+            if fan_mat is not None:
+                gcmd.respond_info(
+                    "[k2_box] FLUSH: Bauteillüfter S%s für %s "
+                    "(flush_fan_materials statt flush_fan_start %s)" % (
+                        _n(fan_start), mat, _n(c["flush_fan_start"])))
             self._move(gcmd, "Bauteillüfter (Stock M106 P0 S50)",
-                       ["M106 P0 S%s" % _n(c["flush_fan_start"]), "M400"],
+                       ["M106 P0 S%s" % _n(fan_start), "M400"],
                        wrap=False)
         self._heat(gcmd, temp)
         old_accel = self._max_accel()
