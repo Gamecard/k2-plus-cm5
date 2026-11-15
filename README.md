@@ -227,6 +227,22 @@ eine eigene Leak-Muster-Liste für `pack.sh`).
 - Der Eingriff kann Garantie- bzw. Gewährleistungsansprüche gegenüber dem Hersteller beeinträchtigen. Es gibt keine
   Gewährleistung und keinen Support.
 
+## Danksagung
+
+Dieses Projekt baut auf der Arbeit anderer auf. Danke an:
+
+- **Klipper**, **Moonraker** und **Mainsail** – ohne sie gäbe es nichts, worauf die Module aufsetzen könnten.
+- **grant0013** – für [K2 OpenKlipper](https://github.com/grant0013/K2-OpenKlipper) und die frühere Untersuchung
+  des Creality K2. Mehrere Verbesserungen hier gehen auf dortige Ideen und Messungen zurück, z. B. die längere
+  Lüfter-Wartezeit vor dem Antasten, das Setzen der Strapping-Pins beim Wecken der Motoren, der Lüfter- und der
+  Mesh-Wächter sowie die Motor-Parameter-IDs.
+- **gitstonelabs** (creality-cfs-klipper) – für Testvektoren und Protokoll-Abgleich der CFS-Box.
+- **Connor Wolf** (fake-name) – für Hardware- und Firmware-Fakten zur CFS-Box.
+- **prestonbrown** (HelixScreen) – für Recherche-Dokumente, die beim Abgleich geholfen haben.
+
+Aus diesen Projekten wurde kein fremder Code übernommen, mit Ausnahme der in [`NOTICES.md`](NOTICES.md) genannten
+Testdaten. Dort steht auch im Einzelnen, was woher stammt.
+
 ## Lizenzen
 
 - **Software** (`pi-host/`, `nachbau/`, Skripte, Dokumentation außerhalb von `hardware/`): **GPL-3.0-or-later**

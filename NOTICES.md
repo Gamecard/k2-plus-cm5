@@ -41,6 +41,22 @@
   `prestonbrown/helixscreen` wurden zum Abgleich und zur Korrektur eigener Ergebnisse verwendet.
 - `grant0013/k2-reverse-engineering` (GPL-3.0, Creality K2): Motor-Parameter-IDs (z. B. ID 70 =
   Positionsregler-Kp) und Motor-Kommandobytes wurden zum Abgleich genutzt und als Fremd-Hypothesen gekennzeichnet.
+- `grant0013/K2-OpenKlipper` (<https://github.com/grant0013/K2-OpenKlipper>, GPL-3.0, Creality K2/K2 Plus mit
+  Mainline-Klipper; abgeglichen mit Stand v0.4.25-alpha.1, 09.11.2026). Kein Code übernommen – folgende Ideen und
+  Messwerte von dort wurden eigenständig umgesetzt:
+  - Lüfter-Wartezeit vor der Kraftsensor-Antastung auf 8 s (`fan_damping_settle_s`; dortige Messung: mit 3 s lösen
+    die ersten Antastungen ohne Berührung aus),
+  - am Druckende Einzugsfehler 0x09–0x0e der CFS-Box quittieren, bevor entladen wird
+    (`end_print_clear_load_error`),
+  - Dir-/Step-Strapping-Pins beim Wecken der Motoren als eigene Rohpins setzen und den vorherigen Pegel
+    zurückstellen, statt sie als `MCU_digital_out` anzulegen (`k2_motor_init.py`),
+  - Sendeschutz: Schreiben des FAL-Parameters (ID 94/110) an die Motoren gesperrt (dortiger Befund: legt den Regler
+    bis zum Aus-/Einschalten lahm),
+  - Einzug: Fehler 0x0c erst nach Blick auf den Kopfsensor werten (`extrude_stall_head_grace`) und ein Reststück im
+    Kopf durch die Düse schieben (`stub_clear_*`),
+  - Bauteillüfter beim Spülen je Material (`flush_fan_materials`), Orca-Filament-ID je Fach (`orca_filament_ids`),
+  - Lüfter-Überwachung über die Tacho-Signale (`k2_fanwatch.py`) und Prüfung des Bett-Meshs auf Ausreißer
+    (`k2_mesh_guard.py`).
 - `fake-name/cfs-reverse-engineering` (<https://github.com/fake-name/cfs-reverse-engineering>, Connor Wolf; keine
   Lizenz außer GPL3 für die Adapter-PCBs): CFS-Hardware-/Firmware-Fakten (Flash-Map/Bootloader, Bauteile,
   RFID-vender-Feldlayout) nur als Fakten mit Quellenangabe übernommen; keine Texte, Fotos oder Dumps, keine
