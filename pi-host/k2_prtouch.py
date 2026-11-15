@@ -218,9 +218,14 @@ STOCK_SPEED = 5.0  # BELEGT STEP_DATA-Fall + liveconfig speed
 STOCK_HUB = 5.0  # BELEGT horizontal_move_z + PRTOUCH_MOVE Z5.00
 STOCK_FANS = 0.6  # BELEGT prth_min_fans + DISTUURB_CTL
 # Lüfterdämpfung (fan_damping): Wartezeit nach dem Drosseln, bis der
-# Hotend-Lüfter langsamer dreht (ANNAHME; Stock drosselt bei
-# multi_probe_begin, danach folgt erst die XY-Fahrt zum Punkt).
-FAN_DAMPING_SETTLE_DEFAULT_S = 1.5
+# Hotend-Lüfter langsamer dreht (Stock drosselt bei multi_probe_begin,
+# danach folgt erst die XY-Fahrt zum Punkt). 15.11.2026: 1,5 s (ANNAHME) ->
+# 8 s nach Fremdmessung am K2 Plus (Projekt K2 OpenKlipper, GPLv3, nur der
+# Messwert übernommen: mit 3 s lösten die ersten zwei Antastungen ohne
+# Berührung aus, solange die Lüfter noch ausliefen; mit 8 s lagen fünf
+# Antastungen innerhalb von 0,0025 mm). Gewartet wird nur, wenn ein
+# laufender Lüfter wirklich gedrosselt wurde, und einmal je Antast-Sitzung.
+FAN_DAMPING_SETTLE_DEFAULT_S = 8.0
 FAN_DAMPING_SETTLE_MAX_S = 10.0
 STOCK_TEMP_NOZZLE = 140.0  # BELEGT G29-Ablauf
 STOCK_TEMP_BED = 50.0  # BELEGT G29-Ablauf

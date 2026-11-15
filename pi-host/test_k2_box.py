@@ -4546,6 +4546,51 @@ def test_end_print_unload():
             "Fehler = Meldung ohne Pause; Restmaterial am Druckende ausgespült")
 
 
+def test_end_print_quittiert_einzugsfehler():
+    """15.11.2026: Box steht am Druckende noch in ERROR aus einem
+    gescheiterten Einzug (0x0c, live 09.11.2026) -> KTWO_BOX_END_PRINT
+    sendet VOR dem Entladen 0x04 [00 01], meldet es und entlädt normal.
+    Kein Einzugsfehler (0x16) -> nicht quittiert, nur Meldung. Option aus
+    -> kein 0x04 vor PRE_OPT (Verhalten bis 15.11.)."""
+    def lauf(code, **opt):
+        bus, printer, mod, ctl, pieces = _ending_hull(
+            hub=0x02, end_print_unload="True", **opt)
+        ctl.loaded_slot = "B"
+        bus.slots["A"]["filament"] = True
+        bus.state, bus.stored_error = 4, code
+        g = FakeGcmd({})
+        n0 = len(bus.trace)
+        mod.cmd_end_print(g)
+        return bus, printer, mod, g, bus.trace[n0:]
+    # a) 0x0c -> quittiert vor PRE_OPT, danach normal entladen
+    bus, printer, mod, g, t = lauf(0x0C)
+    i_clr = _idx(t, _b(0x04, (0x00, 0x01)))
+    i_pre = _idx(t, _g("SAVE_GCODE_STATE NAME=_ktwo_box_chain"))
+    assert i_clr < i_pre, (i_clr, i_pre)
+    assert any("0x0c" in m and "quittiert" in m for m in g.infos), g.infos
+    assert any("geschnitten und in die Box zurückgezogen" in m
+               for m in g.infos), (g.infos, printer.gcode.raw)
+    assert not printer.paused
+    assert mod.get_status()["end_print_clear_load_error"] is True
+    # b) 0x16 (kein Einzugsfehler) -> kein 0x04 vor PRE_OPT, Meldung
+    bus, printer, mod, g, t = lauf(0x16)
+    i_pre = _idx(t, _g("SAVE_GCODE_STATE NAME=_ktwo_box_chain"))
+    assert not [e for e in t[:i_pre] if _b(0x04, (0x00, 0x01))(e)]
+    assert any("kein Einzugsfehler" in m for m in g.infos), g.infos
+    assert not printer.paused
+    # c) Option aus -> kein 0x04 vor PRE_OPT, keine Meldung dazu
+    bus, printer, mod, g, t = lauf(0x0C, end_print_clear_load_error="False")
+    i_pre = _idx(t, _g("SAVE_GCODE_STATE NAME=_ktwo_box_chain"))
+    assert not [e for e in t[:i_pre] if _b(0x04, (0x00, 0x01))(e)]
+    assert not any("quittiert" in m for m in g.infos), g.infos
+    assert not printer.paused
+    # d) Konstanten = Stock-Statuscodes 0x09–0x0e
+    assert tuple(sorted(K.END_PRINT_CLEARABLE_ERRORS)) == tuple(
+        range(0x09, 0x0F)), K.END_PRINT_CLEARABLE_ERRORS
+    return ("0x0c quittiert vor PRE_OPT + entladen; 0x16 bleibt; Option aus "
+            "= altes Verhalten; Codes 0x09–0x0e")
+
+
 def test_end_print_heiss_ohne_warten():
     """13.11.2026: Druckende/Abbruch – Düse schon heißer als die
     Material-Temperatur -> M104 auf Ist (gerundet) ohne Warten, KEIN M109
@@ -6916,6 +6961,8 @@ TESTS = [
      test_end_print_unload),
     ("Druckende: heiße Düse entlädt ohne Abkühl-Warten (13.11.2026)",
      test_end_print_heiss_ohne_warten),
+    ("Druckende: Einzugsfehler 0x09–0x0e vor dem Entladen quittiert (15.11.2026)",
+     test_end_print_quittiert_einzugsfehler),
     ("Restmaterial/Druckende: Optionen, k2-module.cfg, END_PRINT-Makro",
      test_ending_config_makro),
     ("Stock-Retry bei 0x0c (Controller, == Live-Log)", test_extrude_stock_retry),

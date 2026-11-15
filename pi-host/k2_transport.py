@@ -223,6 +223,18 @@ TX_FLASH_PARAM_READ_SUBS = frozenset((0x02, 0x06))
 TX_FUNC_ENCODER_REG_CHECK = 0x02
 TX_FUNC_DEV_UUID = 0x12
 TX_DEV_UUID_READ = (0x02,)
+# FAL-Sperre (15.11.2026, Regelstand 20261115, gleich serial485): an Motor-Adressen nie
+# fun 0x06 Sub 01 (Sys-Param schreiben) auf ID 94
+# (controller_spd_loop_pid_fal_param_en) oder ID 110
+# (controller_cur_loop_pid_fal_param_en) mit einem Wert != 0. Fremdbefund
+# (Projekt K2 OpenKlipper, docs/MOTOR-CONTROLLER.md „The FAL incident“, K2):
+# ID 94 = 1 auf X/Y lief in Bewegung, im Leerlauf antworteten beide Regler
+# nach einigen Minuten nicht mehr; RESTART half nicht, nur Aus/Ein. ID 110
+# ist der gleiche Schalter im Stromregler (nicht getestet, vorsorglich
+# gesperrt). Schreiben von 0 (= aus) bleibt erlaubt, Lesen (Sub 02) frei.
+TX_FUNC_SYS_PARAM = 0x06
+TX_SYS_PARAM_WRITE = 0x01
+TX_FAL_ENABLE_IDS = frozenset((94, 110))
 # Update-/Bootloader-/Service-Sperre (18.10.2026, gleich serial485, Begründung
 # dort), an JEDE Adresse, ohne Override: fun 0xF0 nur Payload exakt [00] Version /
 # [02] App starten / [03] Sektorgröße (gesperrt: 01 Update-Request, Länge,
@@ -253,10 +265,11 @@ TX_RFID_ADDR = 0x11
 TX_RFID_ALLOWED_FUNS = frozenset((0x02, 0x14))
 TX_BROADCAST_BLOCKED_FUNS = frozenset((0x02, 0x14))
 # Regelstand (monoton, Format JJJJMMTT; 18.10.2026 Stufe 2 -> 20261019,
-# 26.10.2026 Motor 0x02/0x12 -> 20261026):
+# 26.10.2026 Motor 0x02/0x12 -> 20261026, 15.11.2026 FAL-Sperre ->
+# 20261115):
 # nachbau/serial485 wird nur genutzt, wenn sein TX_GUARD_REV >= diesem Wert
 # ist (sonst lokaler Fallback, s. unten).
-TX_GUARD_REV = 20261027
+TX_GUARD_REV = 20261115
 # Kalibrier-Einmalfreigabe (26.10.2026 abends, gleich serial485): genau ein
 # Frame aus TX_CAL_FREIGABE_FRAMES an 0x81-0x84, ≤ 10 s, nur über
 # tx_kalibrier_freigabe() (setzt die Freigabe lokal UND in serial485, weil
@@ -398,6 +411,13 @@ def _check_tx_frame_local(addr, fun, data=()):
                 "Sendeschutz: Motor 0x%02x fun 0x02 (encoder_calibrate) "
                 "gesperrt – brennt Encoder-Register ins EEPROM; nichts "
                 "gesendet" % addr)
+        if fun == TX_FUNC_SYS_PARAM and len(data) >= 2 \
+                and data[0] == TX_SYS_PARAM_WRITE \
+                and data[1] in TX_FAL_ENABLE_IDS and any(data[2:]):
+            raise _LocalTxGuardError(
+                "Sendeschutz: Motor 0x%02x Sys-Param ID %d (FAL ein) gesperrt "
+                "– legte im Leerlauf die Regler bis Aus/Ein lahm (Fremdbefund "
+                "K2); nur Wert 0 erlaubt; nichts gesendet" % (addr, data[1]))
     if (addr in TX_MOTOR_GUARD_ADDRS or addr == BROADCAST_ADDR) \
             and fun == TX_FUNC_DEV_UUID and tuple(data) != TX_DEV_UUID_READ:
         raise _LocalTxGuardError(

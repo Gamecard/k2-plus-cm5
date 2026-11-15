@@ -228,10 +228,10 @@ def teil_b():
         std = True
     tr = open(os.path.join(ND, "..", "pi-host", "k2_transport.py"), encoding="utf-8").read() \
         if os.path.isfile(os.path.join(ND, "..", "pi-host", "k2_transport.py")) else None
-    check(std and serial485.TX_GUARD_REV == 20261027
+    check(std and serial485.TX_GUARD_REV == 20261115
           and serial485.TX_BOOTLOADER_ADDRS == frozenset((0x23, 0x24, 0x85, 0x86, 0x87, 0x88))
-          and (tr is None or "TX_GUARD_REV = 20261027" in tr),
-          "B14 Standard-Sendeschutz unverändert (F0 an 0x85 weiter gesperrt, TX_GUARD_REV 20261027)")
+          and (tr is None or "TX_GUARD_REV = 20261115" in tr),
+          "B14 Standard-Sendeschutz unverändert (F0 an 0x85 weiter gesperrt, TX_GUARD_REV 20261115)")
     for b in bs.UART_ERLAUBT:
         bs.check_uart_tx(b)
     uart_nein = [b"\x01\xfe", b"\x03\xfc", b"\x04\xfb", b"\x05\xfa", b"\x00\x10\x00\x00\xef",

@@ -170,6 +170,15 @@ BUS_SECTION = "k2_485"
 MOTOR_NAME_TO_NUM = {"x": 1, "y": 2, "z": 3, "z1": 4, "e": 5}
 VERIFY_ORDER = ("x", "y", "z", "z1", "e")
 PIN_MOTORS = ("x", "y", "z", "z1")
+# Strapping-Leitungen (15.11.2026): zusätzlich E über die Düsen-MCU
+# (motor_e_dir/_step, optional). Der E-Regler bestimmt seine Adresse beim
+# Wecken aus nozzle_mcu PB4 (DIR) / PB5 (STEP) wie die Achsen (0x81 + DIR +
+# 2·STEP). Bleibt PB4 nach einem Druck high (reiner Host-Neustart, MCU nicht
+# zurückgesetzt), nimmt er 0x82 und schweigt auf 0x81 -> key798 „Fehlend:
+# e“ (live 22.10./26.10.2026). Fremdbefund (Projekt K2 OpenKlipper, GPLv3,
+# docs/MOTOR-CONTROLLER.md): beim Wecken PB4/PB5 low halten. Nur die Idee
+# übernommen. Stock F008 setzt die E-Leitungen nicht (motor_control.cfg).
+STRAP_MOTORS = PIN_MOTORS + ("e",)
 ALWAYS_READ = (9, 10, 25)
 HOST_ONLY_IDS = (226,)
 ABS_TOL = 1e-6
@@ -341,7 +350,7 @@ ERR_KEY798 = ("[key798] Motor-Verbindung fehlgeschlagen, max. Retry-Anzahl "
 ERR_KEY799 = ("[key799] GPIO-Prüfung (Strapping) fehlgeschlagen: Pin %s "
               "erwartet phys=%d, gelesen=%s (%d/%d Versuche).")
 ERR_KEY800 = ("[key800] GPIO-Restore-Prüfung fehlgeschlagen: Pin %s "
-              "erwartet phys=0, gelesen=%s.")
+              "erwartet phys=%d, gelesen=%s.")
 ERR_KEY801 = ("[key801] Stall-Mode (Z/Z1) fehlgeschlagen: Motor %s "
               "antwortet nicht auf 0x11 [02] (%d Versuche).")
 ERR_KEY802 = ("[key802] Stall-Mode (E) fehlgeschlagen: Extruder antwortet "
@@ -1791,11 +1800,20 @@ class KlippyGpio(GpioOps):
     # Stock: setup_max_duration(0.0) für alle Strapping-Pins (s. Docstring).
     STRAPPING_MAX_DURATION = 0.0
 
-    def __init__(self, printer, main_mcu_name="mcu", pin_specs=None):
+    def __init__(self, printer, main_mcu_name="mcu", pin_specs=None,
+                 extra_mcu_names=()):
         self.printer = printer
         self.main_mcu_name = main_mcu_name
+        # 15.11.2026: Strapping-Pins auch auf weiteren MCUs (E: nozzle_mcu
+        # PB4/PB5). Je MCU eine eigene Abfrage query_gpio_status; fehlt der
+        # Befehl dort im Dictionary, liefert query_pin None (der Controller
+        # lässt das E-Strapping dann aus).
+        self.extra_mcu_names = tuple(str(n).strip() for n in (extra_mcu_names or ())
+                                     if str(n).strip())
         self._pins = {}
         self._pin_numbers = {}
+        self._pin_mcu = {}   # pin_raw -> MCU-Config-Name
+        self._queries = {}   # MCU-Config-Name -> Query (oder None)
         self._query = None
         self._query_available = None
         self._query_oid = None
@@ -1814,11 +1832,16 @@ class KlippyGpio(GpioOps):
         # – sie gehören nicht zum Strapping und haben eigene MCU-Objekte.
         ppins = printer.lookup_object("pins")
         chip = _mcu_chip_name(main_mcu_name)
+        extra = {_mcu_chip_name(n): n for n in self.extra_mcu_names}
         for raw in uniq:
+            mcu_name = main_mcu_name
             if ":" in str(raw):
                 prefix = str(raw).split(":", 1)[0].lstrip("!^~").strip()
-                if prefix not in (main_mcu_name, chip):
+                if prefix in extra:
+                    mcu_name = extra[prefix]
+                elif prefix not in (main_mcu_name, chip):
                     continue
+            self._pin_mcu[raw] = mcu_name
             # Upstream-Signatur: setup_pin('digital_out', pin_desc) -> MCU_digital_out
             pin = ppins.setup_pin("digital_out", raw)
             # Statischer Pin wie Stock: max_duration 0 (kein MCU-Shutdown, wenn
@@ -1843,7 +1866,8 @@ class KlippyGpio(GpioOps):
         # nach dem Connect verfügbar).
         # 1) mcu.get_enumeration('pin', name) / get_enumerations()['pin'].
         try:
-            mcu = _lookup_mcu(self.printer, self.main_mcu_name)
+            mcu = _lookup_mcu(self.printer, self._pin_mcu.get(
+                pin_raw, self.main_mcu_name))
             if hasattr(mcu, "get_enumeration"):
                 return int(mcu.get_enumeration("pin", _clean_pin_name(pin_raw)))
             if hasattr(mcu, "get_enumerations"):
@@ -1861,28 +1885,31 @@ class KlippyGpio(GpioOps):
             pass
         raise ValueError("Pin-Nummer für %r nicht auflösbar" % (pin_raw,))
 
-    def handle_connect(self):
-        """Query-Befehl nach klippy:connect auflösen (optional, sonst None)."""
+    def _make_query(self, mcu_name):
         try:
-            mcu = _lookup_mcu(self.printer, self.main_mcu_name)
+            mcu = _lookup_mcu(self.printer, mcu_name)
         except Exception:
-            self._query = None
-            self._query_available = False
-            return
+            return None
         try:
             # Upstream: try_lookup_command(msgformat) -> None, wenn der Befehl
             # im Dictionary fehlt (mcu.py:1206); erst dann den Query anlegen.
             if hasattr(mcu, "try_lookup_command"):
                 if mcu.try_lookup_command(self.QUERY_FMT) is None:
-                    self._query = None
-                    self._query_available = False
-                    return
-            self._query = mcu.lookup_query_command(
+                    return None
+            return mcu.lookup_query_command(
                 self.QUERY_FMT, self.QUERY_RESP, oid=self._query_oid)
-            self._query_available = True
         except Exception:
-            self._query = None
-            self._query_available = False
+            return None
+
+    def handle_connect(self):
+        """Query-Befehl nach klippy:connect auflösen (optional, sonst None)
+        – für die Main-MCU und jede weitere MCU mit Strapping-Pins."""
+        self._query = self._make_query(self.main_mcu_name)
+        self._query_available = self._query is not None
+        self._queries = {self.main_mcu_name: self._query}
+        for name in sorted(set(self._pin_mcu.values())):
+            if name not in self._queries:
+                self._queries[name] = self._make_query(name)
 
     def set_pin(self, pin_raw, level):
         if pin_raw not in self._pins:
@@ -1921,14 +1948,19 @@ class KlippyGpio(GpioOps):
             pass
 
     def query_pin(self, pin_raw):
-        if self._query is None or self._query_available is False:
+        mcu_name = self._pin_mcu.get(pin_raw, self.main_mcu_name)
+        if mcu_name == self.main_mcu_name:
+            query = self._query if self._query_available is not False else None
+        else:
+            query = self._queries.get(mcu_name)
+        if query is None:
             return None
         try:
             pin_num = self._pin_numbers.get(pin_raw)
             if pin_num is None:
                 pin_num = self._resolve_pin_number(pin_raw)
                 self._pin_numbers[pin_raw] = pin_num
-            res = self._query.send([int(self._query_oid), int(pin_num)])
+            res = query.send([int(self._query_oid), int(pin_num)])
             if not isinstance(res, dict) or "status" not in res:
                 return None
             return int(res["status"])
@@ -1957,6 +1989,7 @@ class K2MotorController:
         self.send_event = send_event
         self.is_ready = False
         self.pin_levels = {}  # pin_raw -> level (für Diagnose/Tests)
+        self._pins_before = {}  # pin_raw -> phys vor P1 (Restore in P7)
         # Sensorless-Homing-Zustand (KTWO_MOTOR_HOMING / _STALL_MODE):
         # zuletzt per Echo bestätigter Stall-Mode je Motor (None = unbekannt)
         self.stall_mode = {m: None for m in STALL_READ_MOTORS}
@@ -2028,7 +2061,7 @@ class K2MotorController:
 
     def _pin_list(self):
         lst = []
-        for m in PIN_MOTORS:
+        for m in STRAP_MOTORS:
             p = self.cfg["pins"].get(m) or {}
             for kind in ("dir", "step"):
                 if p.get(kind):
@@ -2037,7 +2070,7 @@ class K2MotorController:
 
     def _strapping_rows(self):
         rows = []
-        for m in PIN_MOTORS:
+        for m in STRAP_MOTORS:
             p = self.cfg["pins"].get(m) or {}
             if not p.get("dir") or not p.get("step"):
                 continue
@@ -2152,7 +2185,27 @@ class K2MotorController:
         # P0
         info("P0 transparent-Kanal: Düsen-MCU %s (Extruder 0x81)" % cfg.get("nozzle_mcu"))
 
-        # P1
+        # P1 – vorher die ausgegebenen Pegel lesen (15.11.2026): der Stepper
+        # der MCU schaltet seine DIR-Leitung RELATIV zum letzten Pegel um.
+        # P7 stellt deshalb genau diese Pegel wieder her (fest 0 würde nach
+        # einem Druck + Host-Neustart die Richtung umkehren). E-Leitungen nur,
+        # wenn ihr Pegel lesbar ist – sonst E-Strapping auslassen.
+        self._pins_before = {}
+        if can_write:
+            before = self._query_all_pins(pin_list)
+            e_unknown = [s["raw"] for m, _k, s in pin_list
+                         if m == "e" and before.get(s["raw"]) is None]
+            if e_unknown:
+                info("P1 E-Leitungen %s nicht rücklesbar – E-Strapping "
+                     "ausgelassen (Verhalten wie ohne motor_e_dir/_step)"
+                     % ",".join(e_unknown))
+                pin_list = [t for t in pin_list if t[0] != "e"]
+                before = {k: v for k, v in before.items() if k not in e_unknown}
+            self._pins_before = dict(before)
+            known = ["%s=%d" % (s["raw"], before[s["raw"]])
+                     for _m, _k, s in pin_list if before.get(s["raw"]) is not None]
+            if known:
+                info("P1 Pegel vorher (phys): %s" % " ".join(known))
         if can_write:
             info("P1 Strapping-Pegel setzen (%d Pins)" % len(pin_list))
             for m, kind, spec in pin_list:
@@ -2336,9 +2389,14 @@ class K2MotorController:
         return {"status": "ready", "log": logs, "errors": errors, "ready": True}
 
     def _restore_pins(self, pin_list, can_write, info, err):
+        """P7: Pegel von VOR P1 wiederherstellen (15.11.2026, s. P1); ohne
+        Rücklesung wie bisher physisch 0."""
+        before = getattr(self, "_pins_before", None) or {}
         if can_write:
             for m, kind, spec in pin_list:
-                lvl = 1 if spec["invert"] else 0
+                phys = before.get(spec["raw"])
+                phys = 0 if phys is None else int(phys)
+                lvl = phys ^ (1 if spec["invert"] else 0)
                 try:
                     self.gpio.set_pin(spec["raw"], lvl)
                     self.pin_levels[spec["raw"]] = lvl
@@ -2352,8 +2410,10 @@ class K2MotorController:
             back = self._query_all_pins(pin_list)
             for _m, _k, spec in pin_list:
                 got = back.get(spec["raw"])
-                if got is not None and got != 0:
-                    err(ERR_KEY800 % (spec["raw"], got))
+                want = before.get(spec["raw"])
+                want = 0 if want is None else int(want)
+                if got is not None and got != want:
+                    err(ERR_KEY800 % (spec["raw"], want, got))
             info("restore set_pin_io done")
             self.pause(PAUSE_RESTORE_DONE)
         else:
@@ -3562,7 +3622,8 @@ class PrinterK2Motor:
         #   Stock-_build_config @0xa04fc). Lookup erst nach connect.
         self._gpio = KlippyGpio(
             self.printer, self.main_mcu_name,
-            pin_specs=self._strapping_pin_specs())
+            pin_specs=self._strapping_pin_specs(),
+            extra_mcu_names=(self.nozzle_mcu_name,))
         self._oid = self.nozzle_mcu.create_oid()
         self.nozzle_mcu.register_config_callback(self._build_transparent_config)
         self._tadapter = KlippyTransparentAdapter(self.nozzle_mcu, self._oid)
@@ -3737,9 +3798,10 @@ class PrinterK2Motor:
             return False
 
     def _strapping_pin_specs(self):
-        """Alle früh anzulegenden Pins: Dir/Step (x/y/z/z1) + Enable."""
+        """Alle früh anzulegenden Pins: Dir/Step (x/y/z/z1, optional e auf
+        der Düsen-MCU) + Enable."""
         specs = []
-        for m in PIN_MOTORS:
+        for m in STRAP_MOTORS:
             for kind in ("dir", "step"):
                 spec = (self.cfg.get("pins", {}).get(m) or {}).get(kind)
                 if spec and spec.get("raw") and spec["raw"] not in specs:

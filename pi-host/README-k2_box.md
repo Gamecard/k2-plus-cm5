@@ -720,6 +720,7 @@ RESUME), Stock-Datei als Startwert nach `install.sh --remain-material`.
 | `max_tube_length` | 3000 (int, 80..10000) | Stock-`BoxCfg`-Obergrenze in mm; das letzte Stück wird gekürzt (Stock: 38 × 80 = 3040) |
 | `ending_material_timeout` | 3600 s | Zeitlimit des Ausspülens (Pi-Zusatz, Stock: keins) |
 | `end_print_unload` | `True` (seit 18.10.2026, = Stock; vorher `False`) | Druckende wie Stock `box_end`: heizen, schneiden, in die Box zurück (Stock entlädt immer, live 12.10. + 18.10.); `False` = Filament bleibt im Kopf |
+| `end_print_clear_load_error` | `True` (seit 15.11.2026) | Druckende: steht die Box noch wegen eines gescheiterten Einzugs in ERROR (0x09–0x0e, z. B. 0x0c Odometer-Stillstand), sendet `KTWO_BOX_END_PRINT` vor dem Entladen `0x04 [00 01]` (= `KTWO_BOX_ERROR_CLEAR`) und meldet es; andere Fehler bleiben stehen (nur Meldung). Anlass: live 09.11.2026 scheiterte der Rückzug am alten Einzugsfehler. `False` = Verhalten bis 15.11.2026 |
 
 **Auslöser (Stock `send_data`):** Jeder 0x0a-Poll (Timer ~4 s,
 `KTWO_BOX_STATUS`, Box-Warten) mit Status **0x50** im PRINT (bzw. gespeichert

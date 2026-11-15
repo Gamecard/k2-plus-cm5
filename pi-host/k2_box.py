@@ -504,6 +504,17 @@ TEMP_LIMIT_MARGIN = 10.0  # K unter [extruder] max_temp (DB-Werte kappen)
 # (0x50) vor“). ANNAHME: Stock quittiert sie beim Auto-Nachladen ebenso.
 RUNOUT_CLEARABLE_ERRORS = (_BOX.STATUS_RUNOUT, _BOX.STATUS_SPEED_ERR,
                            _BOX.STATUS_NO_FEED)
+# Druckende (15.11.2026): Box-ERROR aus einem gescheiterten EINZUG (Stock-
+# Fehlerpfad lässt die Box nach dem zweiten Fehlschlag in ERROR, s.
+# do_extrude). KTWO_BOX_END_PRINT quittiert ihn vor dem Entladen per 0x04
+# [00 01] (wie KTWO_BOX_ERROR_CLEAR), sonst bricht der Rückzug schon im
+# Box-Zustand-Abwarten mit dem alten Einzugsfehler ab (live 09.11.2026:
+# „END_PRINT-Rückzug scheiterte an Box-Fehler 0x0c“). Andere Fehler bleiben
+# stehen (nur Meldung).
+END_PRINT_CLEARABLE_ERRORS = (
+    _BOX.STATUS_HUB_NO_MOVE, _BOX.STATUS_FEED_TIMEOUT,
+    _BOX.STATUS_FEED_MAX_LEN, _BOX.STATUS_ODOMETER_STALL,
+    _BOX.STATUS_BUFFER_NOT_FULL, _BOX.STATUS_EXTRUDER_TIMEOUT)
 
 CHAIN_STATE_NAME = "_ktwo_box_chain"
 STEP_STATE_NAME = "_ktwo_box_step"
@@ -2056,7 +2067,9 @@ def parse_options(opts):
     - Restmaterial/Druckende (17.10.2026, README-k2_box.md §12.5):
       ending_material_purge (Default True), max_tube_length (3000 mm),
       ending_material_timeout (3600 s), end_print_unload (Default True
-      seit 18.10.2026, Stock entlädt immer).
+      seit 18.10.2026, Stock entlädt immer), end_print_clear_load_error
+      (Default True seit 15.11.2026: Einzugsfehler 0x09–0x0e vor dem
+      Entladen quittieren).
     - Druckabbruch (18.10.2026, C2):
       cancel_interrupt (Default True, s. PrinterK2Box._hook_cancel).
     """
@@ -2148,6 +2161,11 @@ def parse_options(opts):
         # (Stock entlädt immer, 2x belegt: 12.10., 18.10.,
         # A5); False = Filament bleibt geladen.
         "end_print_unload": _bool("end_print_unload", True),
+        # 15.11.2026: vor dem Entladen am Druckende einen Box-ERROR aus einem
+        # gescheiterten Einzug (END_PRINT_CLEARABLE_ERRORS) per 0x04 [00 01]
+        # quittieren (mit Meldung). False = Rückzug bricht wie bisher ab.
+        "end_print_clear_load_error": _bool("end_print_clear_load_error",
+                                            True),
         # C2 (18.10.2026): Webhook
         # pause_resume/cancel einhüllen – lange Warteschleifen (Einzug bis
         # Kopfsensor, Box-Zustand, Spülen/Ausspülen je Abschnitt) enden bei
@@ -2282,7 +2300,7 @@ def parse_klipper_config(config):
                "resume_redo_change", "material_database", "flush_mode",
                "remain_material_file", "flush_clean", "flush_blow", "flush_blow_fan",
                "flush_clog_check", "ending_material_purge", "end_print_unload",
-               "cancel_interrupt", "filament_source_file", "extern_rfid")
+               "end_print_clear_load_error", "cancel_interrupt", "filament_source_file", "extern_rfid")
               + tuple(CHANGE_DEFAULTS)):
         if k not in opts:
             v = _g(k, None)
@@ -4119,6 +4137,8 @@ class PrinterK2Box:
                 "ending_material_purge")),
             "ending_last": self.ending_last or "",
             "end_print_unload": bool(self.cfg.get("end_print_unload")),
+            "end_print_clear_load_error": bool(self.cfg.get(
+                "end_print_clear_load_error")),
             # Druckweiter Box-Zustand (A2): KTWO_BOX_PRINT_START gesendet,
             # Einzug schaltet 0x0f im Druck nicht um
             "print_hold": bool(self.controller is not None
@@ -7730,6 +7750,8 @@ class PrinterK2Box:
                                   tag, self.chain_error
                                   or self.chain.get("tnn") or "Kette"))
             return None
+        if unload and c.get("end_print_clear_load_error"):
+            self._end_print_clear_load_error(gcmd, tag)
         self._end_print = True
         try:
             self._script(["KTWO_BOX_PRE_OPT Z_HOP=0"])
@@ -7779,6 +7801,47 @@ class PrinterK2Box:
                 # gesperrt)
                 self.chain_error, self._chain_error_step = held
         return None
+
+    def _end_print_clear_load_error(self, gcmd, tag):
+        """Druckende (15.11.2026): steht die Box wegen eines gescheiterten
+        Einzugs (END_PRINT_CLEARABLE_ERRORS, z. B. 0x0c Odometer-Stillstand)
+        noch in ERROR, vor dem Entladen 0x04 [00 01] senden (= KTWO_BOX_
+        ERROR_CLEAR, keine Bewegung) und melden. Andere Fehler: nur Meldung,
+        Box bleibt ERROR (Rückzug bricht dann wie bisher ab). Abfrage- oder
+        Sendefehler: nur Meldung – END_PRINT läuft immer weiter."""
+        try:
+            ctl = self._ensure_controller()
+            st = ctl.poll_status()
+            if st.get("kind") not in ("state", "state_v113"):
+                st = ctl.poll_status()  # Ereignis (0x30) -> einmal nachfragen
+        except Exception as exc:
+            gcmd.respond_info("%s: Box-Zustand nicht lesbar (%s) – kein "
+                              "Quittieren" % (tag, self._exc_text(exc)))
+            return False
+        if st.get("state") != _BOX.BOX_STATE_ERROR:
+            return False
+        try:
+            code = int(st.get("error_code") or st.get("frame_status") or 0)
+        except (TypeError, ValueError):
+            code = -1
+        if code not in END_PRINT_CLEARABLE_ERRORS:
+            gcmd.respond_info(
+                "%s: Box im Zustand ERROR (Fehler %s) – kein Einzugsfehler, "
+                "nicht quittiert (KTWO_BOX_ERROR_CLEAR von Hand)" % (
+                    tag, ("0x%02x %s" % (code, status_name(code)))
+                    if code >= 0 else "unbekannt"))
+            return False
+        try:
+            ctl.action.communication_set_box_mode_feed()
+        except Exception as exc:
+            gcmd.respond_info("%s: Box-Fehler 0x%02x nicht quittierbar (%s)"
+                              % (tag, code, self._exc_text(exc)))
+            return False
+        gcmd.respond_info(
+            "%s: Box-Fehler 0x%02x %s vom Einzug per 0x04 [00 01] quittiert "
+            "(vor dem Entladen; end_print_clear_load_error)" % (
+                tag, code, status_name(code)))
+        return True
 
     # =================================================================
     # Externe Spule (19.10.2026, README-k2_box.md §18)

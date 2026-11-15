@@ -3328,6 +3328,77 @@ def test_cal_optionen_upstream():
     return "%d Optionen alle per get() abgefragt, Kalibrier-Optionen korrekt" % len(opts)
 
 
+def test_e_strapping_und_pegel_zurueck():
+    """15.11.2026: E-Leitungen (nozzle_mcu PB4/PB5) beim Wecken low halten
+    (Fremdbefund K2 OpenKlipper) und in P7 ALLE Strapping-Pins auf den Pegel
+    von VOR P1 zurückstellen (Stepper schaltet DIR relativ um). E-Pegel nicht
+    lesbar -> E-Strapping ausgelassen. Ohne motor_e_dir/_step unverändert."""
+    E_DIR, E_STEP = "!nozzle_mcu:PB4", "nozzle_mcu:PB5"
+    opts = dict(test_options())
+    opts.update({"motor_e_dir": E_DIR + ",1", "motor_e_step": E_STEP + ",0"})
+    # a) Parse: phys 0/0 -> Adresse 0x81 = erwartet (E)
+    cfg = K.parse_options(opts)
+    pe = cfg["pins"]["e"]
+    assert pe["dir"]["phys"] == 0 and pe["step"]["phys"] == 0, pe
+    assert K.strapping_address(pe["dir"]["phys"], pe["step"]["phys"]) == 0x81
+    # b) Nach einem Druck: E-DIR phys 1, X-DIR phys 1 (Stepper-Rest) ->
+    #    P1 setzt Strapping (E phys 0), P7 stellt phys 1 wieder her
+    cfg, gpio, bus, mcu, rs485, transp, ctl, events = build_system(opts=opts)
+    gpio.levels[E_DIR] = 0      # logisch 0 bei "!" = phys 1
+    gpio.levels[E_STEP] = 0     # phys 0
+    gpio.levels["PB9"] = 1      # X-DIR phys 1
+    res = ctl.run_init()
+    assert res["status"] == "ready", (res["status"], res["errors"])
+    e_dir = [lv for pin, lv in gpio.calls if pin == E_DIR]
+    assert e_dir[0] == 1 and e_dir[-1] == 0, e_dir   # 1 = phys 0, 0 = phys 1
+    assert gpio.query_pin(E_DIR) == 1 and gpio.query_pin(E_STEP) == 0
+    x_dir = [lv for pin, lv in gpio.calls if pin == "PB9"]
+    assert x_dir[0] == 0 and x_dir[-1] == 1, x_dir   # Strapping 0, zurück 1
+    assert gpio.query_pin("PB9") == 1
+    assert not [e for e in res["errors"] if "key800" in e], res["errors"]
+    msgs = [l if isinstance(l, str) else l[1] for l in res["log"]]
+    assert any("Pegel vorher" in l and E_DIR + "=1" in l for l in msgs), msgs
+    # c) E-Pegel nicht lesbar (nie gesetzt) -> E-Strapping ausgelassen,
+    #    X/Y/Z ohne Rücklesung wie bisher phys 0
+    cfg, gpio, bus, mcu, rs485, transp, ctl, events = build_system(opts=opts)
+    res = ctl.run_init()
+    assert res["status"] == "ready", (res["status"], res["errors"])
+    assert not [c for c in gpio.calls if c[0] in (E_DIR, E_STEP)], gpio.calls
+    msgs = [l if isinstance(l, str) else l[1] for l in res["log"]]
+    assert any("E-Strapping ausgelassen" in l for l in msgs), msgs
+    assert gpio.query_pin("PB9") == 0 and gpio.query_pin("!PB7") == 0
+    # d) ohne E-Optionen: keine E-Pins, Pinliste wie bisher (8)
+    cfg, gpio, bus, mcu, rs485, transp, ctl, events = build_system()
+    assert len(ctl._pin_list()) == 8 and "e" not in [m for m, _k, _s in
+                                                       ctl._pin_list()]
+    # e) KlippyGpio: E-Pins auf der Düsen-MCU anlegen, Abfrage dort
+    printer = FakePrinter()
+    printer.nozzle_mcu.supports_query_gpio = True
+    gpio = K.KlippyGpio(printer, "mcu", pin_specs=["PB9", E_DIR, E_STEP],
+                        extra_mcu_names=("nozzle_mcu",))
+    assert set(gpio._pins) == {"PB9", E_DIR, E_STEP}, gpio._pins
+    assert gpio._pin_mcu[E_DIR] == "nozzle_mcu" and gpio._pin_mcu["PB9"] == "mcu"
+    printer.fire_connect()
+    gpio.handle_connect()
+    q = gpio._queries.get("nozzle_mcu")
+    assert q is not None and q.mcu is printer.nozzle_mcu, q
+    assert gpio.query_pin(E_DIR) in (0, 1)
+    #    Düsen-MCU ohne query_gpio_status -> None (Controller lässt E aus)
+    printer = FakePrinter()
+    gpio = K.KlippyGpio(printer, "mcu", pin_specs=["PB9", E_DIR],
+                        extra_mcu_names=("nozzle_mcu",))
+    printer.fire_connect()
+    gpio.handle_connect()
+    assert gpio.query_pin(E_DIR) is None and gpio.query_pin("PB9") is not None
+    #    ohne extra_mcu_names wie bisher übersprungen
+    printer = FakePrinter()
+    gpio = K.KlippyGpio(printer, "mcu", pin_specs=["PB9", E_DIR])
+    assert set(gpio._pins) == {"PB9"}, gpio._pins
+    return ("E phys 0/0 -> 0x81; Pegel nach Druck (E-DIR/X-DIR 1) "
+            "zurückgestellt; E unlesbar -> ausgelassen; ohne Optionen 8 Pins; "
+            "KlippyGpio Düsen-MCU-Abfrage")
+
+
 def test_protect_en_nach_init():
     """protect_en (ID 173) nach dem Init: nur lesend 0x06 [02, 173] je Motor
     (E über den Düsenkanal); 0 -> rote Meldung „Motor-Schutz AUS“, sonst nur
@@ -3415,6 +3486,8 @@ TESTS = [
     ("Kal.-Lauf: Prüfbericht 2 (Sperren, Text-Umweg, Datei)", test_cal_review2),
     ("Optionen ohne get_options (Upstream-Klipper)", test_cal_optionen_upstream),
     ("protect_en nach dem Init (Motor-Schutz an?)", test_protect_en_nach_init),
+    ("E-Strapping beim Wecken + Pegel zurück (15.11.2026)",
+     test_e_strapping_und_pegel_zurueck),
 ]
 
 

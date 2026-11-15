@@ -513,8 +513,10 @@ Temperatur und stehendem Lüfter war er unauffällig (dif 700–900). Heizen sel
   `end_probe_session` – Upstream ruft das auch nach einem G-Code-Fehler (`SampleAveragingHelper`). Die
   Vorabprüfung `KTWO_PRTOUCH_READ` läuft unter denselben Bedingungen. Fehler der Lüftersteuerung werden nur
   gemeldet (ein ungedrosselter Lüfter fällt im Ruhetest ohne Bewegung auf).
-- Optionen: `fan_damping: True` (Default), `fan_damping_speed: 0.6` (Stock), `fan_damping_settle_s: 1.5`
-  (ANNAHME, 0–10 s). Die Kammerlüfter (`chamber_fan`) bleiben unberührt.
+- Optionen: `fan_damping: True` (Default), `fan_damping_speed: 0.6` (Stock), `fan_damping_settle_s: 8`
+  (0–10 s; bis 15.11.2026 1,5 s als ANNAHME, seitdem 8 s nach einer Fremdmessung am K2 Plus: mit 3 s lösten die
+  ersten Antastungen ohne Berührung aus, solange die Lüfter noch ausliefen; mit 8 s lagen fünf Antastungen innerhalb
+  von 0,0025 mm. Kostet höchstens 8 s je Antast-Sitzung und nur, wenn ein laufender Lüfter gedrosselt wurde). Die Kammerlüfter (`chamber_fan`) bleiben unberührt.
 - Tests: `test_1022_fan_damping` (Klasse, Reihenfolge drosseln → scharf → entschärfen → zurück, auch bei Fehler;
   Vorabprüfung; Fehler der Lüftersteuerung).
 - Dazu im Probe-Hauptweg (nicht im Rückfallweg): `rest_max_dif_probe: 16000` – die Rohwert-Spanne ist dort nur

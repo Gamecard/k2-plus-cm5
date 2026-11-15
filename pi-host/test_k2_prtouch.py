@@ -3315,9 +3315,9 @@ def test_1022_fan_damping():
     """Lüfterdämpfung beim Antasten (Stock DISTUURB_CTL SET_FANS=0.60,
     Messung 22.10.2026: Hotend-Lüfter 100 % stört den Ruhetest)."""
     cfg = K.parse_options({})
-    check("(Lüfter) Defaults: an, 0,6 (Stock prth_min_fans), 1,5 s",
+    check("(Lüfter) Defaults: an, 0,6 (Stock prth_min_fans), 8 s (15.11.2026)",
           cfg["fan_damping"] is True and cfg["fan_damping_speed"] == 0.6
-          and cfg["fan_damping_settle_s"] == 1.5)
+          and cfg["fan_damping_settle_s"] == 8.0)
     check("(Lüfter) fan_damping_speed 1,5 / settle 11 s abgelehnt",
           _raises({"fan_damping_speed": 1.5}, "fan_damping_speed")
           and _raises({"fan_damping_settle_s": 11}, "fan_damping_settle_s"))

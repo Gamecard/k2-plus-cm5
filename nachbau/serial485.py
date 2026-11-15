@@ -189,6 +189,18 @@ TX_FLASH_PARAM_READ_SUBS = frozenset((0x02, 0x06))   # einzig erlaubt bei 0x07
 TX_FUNC_ENCODER_REG_CHECK = 0x02
 TX_FUNC_DEV_UUID = 0x12
 TX_DEV_UUID_READ = (0x02,)                           # einzig erlaubt bei 0x12
+# FAL-Sperre (15.11.2026, Regelstand 20261115): an Motor-Adressen nie
+# fun 0x06 Sub 01 (Sys-Param schreiben) auf ID 94
+# (controller_spd_loop_pid_fal_param_en) oder ID 110
+# (controller_cur_loop_pid_fal_param_en) mit einem Wert != 0. Fremdbefund
+# (Projekt K2 OpenKlipper, docs/MOTOR-CONTROLLER.md „The FAL incident“, K2):
+# ID 94 = 1 auf X/Y lief in Bewegung, im Leerlauf antworteten beide Regler
+# nach einigen Minuten nicht mehr; RESTART half nicht, nur Aus/Ein. ID 110
+# ist der gleiche Schalter im Stromregler (nicht getestet, vorsorglich
+# gesperrt). Schreiben von 0 (= aus) bleibt erlaubt, Lesen (Sub 02) frei.
+TX_FUNC_SYS_PARAM = 0x06
+TX_SYS_PARAM_WRITE = 0x01
+TX_FAL_ENABLE_IDS = frozenset((94, 110))
 # Update-/Bootloader-/Service-Sperre (18.10.2026, Analyse des Stock-Updatewegs
 # und des CFS-Bootloaders, B) – HART, ohne Override, an JEDE Adresse:
 # - fun 0xF0 (mcu_util_485-Update-Pfad, Bootloader): erlaubt NUR genau ein
@@ -272,7 +284,7 @@ TX_BROADCAST_BLOCKED_FUNS = frozenset((0x02, 0x14))   # an 0xFF/0xFD
 # zweiter Regelstand am selben Tag = nächster Tag, hier 18.10.2026 Stufe 2
 # -> 20261019). k2_transport nutzt serial485 nur, wenn dieser Stand >=
 # seinem eigenen ist, sonst den lokalen Fallback.
-TX_GUARD_REV = 20261027   # 26.10.2026 abends: Kalibrier-Einmalfreigabe
+TX_GUARD_REV = 20261115   # 15.11.2026: FAL-Sperre (vorher 20261027 Kalibrier-Einmalfreigabe)
 # Kalibrier-Einmalfreigabe (26.10.2026 abends, Regelstand 20261027): GENAU EIN
 # Frame aus TX_CAL_FREIGABE_FRAMES an GENAU EINE Motor-App-Adresse 0x81-0x84
 # darf die Motor-Sperre passieren – nur nach tx_kalibrier_freigabe() und
@@ -545,6 +557,13 @@ def check_tx_frame(addr, fun, data=()):
                 "gesperrt – brennt bei Abweichung die Encoder-Register ins "
                 "EEPROM (Motor-FW-Analyse 25.10.2026); nichts gesendet"
                 % addr)
+        if fun == TX_FUNC_SYS_PARAM and len(data) >= 2 \
+                and data[0] == TX_SYS_PARAM_WRITE \
+                and data[1] in TX_FAL_ENABLE_IDS and any(data[2:]):
+            raise TxGuardError(
+                "Sendeschutz: Motor 0x%02x Sys-Param ID %d (FAL ein) gesperrt "
+                "– legte im Leerlauf die Regler bis Aus/Ein lahm (Fremdbefund "
+                "K2); nur Wert 0 erlaubt; nichts gesendet" % (addr, data[1]))
     if (addr in TX_MOTOR_GUARD_ADDRS or addr == BROADCAST_ALL) \
             and fun == TX_FUNC_DEV_UUID and tuple(data) != TX_DEV_UUID_READ:
         raise TxGuardError(

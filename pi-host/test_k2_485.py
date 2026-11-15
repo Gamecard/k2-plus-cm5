@@ -557,6 +557,17 @@ def _motor_guard_cases():
                   # 0x85-0x88 = Motor-Bootloader: seit Stufe 2 jedes fun gesperrt
                   (a, 0x07, [0x02], a not in S485.TX_BOOTLOADER_ADDRS),
                   (a, 0x07, [0x06, 0x14], a not in S485.TX_BOOTLOADER_ADDRS)]
+    # FAL-Sperre 15.11.2026: Sys-Param schreiben ID 94/110 nur mit Wert 0
+    for a in (0x81, 0x82, 0x83, 0x84, 0xFD):
+        cases += [(a, 0x06, [0x01, 94, 0, 0, 0x80, 0x3F], False),
+                  (a, 0x06, [0x01, 94, 0x01, 0x00], False),
+                  (a, 0x06, [0x01, 110, 0, 0, 0x80, 0x3F], False),
+                  (a, 0x06, [0x01, 94, 0, 0, 0, 0], True),
+                  (a, 0x06, [0x01, 110, 0, 0], True),
+                  (a, 0x06, [0x02, 94], True), (a, 0x06, [0x02, 110], True),
+                  (a, 0x06, [0x01, 70, 0, 0, 0x96, 0x43], True)]
+    # Box-Feeder 0x06 an 0x01 bleibt frei (andere Bedeutung)
+    cases += [(0x01, 0x06, [0x01, 94, 1, 0], True)]
     cases += [(0x81, 0x06, [0x02, 0x46], True), (0x81, 0x0F, [0x01], True),
               (0x81, 0x05, [0x02], True), (0x81, 0x0E, [0x02], True)]
     # Box (0x01-0x04, Gruppe 0xFE): 0x03 Restmenge, 0x04 Modus, 0x07 Hauptmotor
@@ -1021,7 +1032,9 @@ def test_stufe2_sendeschutz():
           and S485.TX_BELT_FRAME_MAX == T.TX_BELT_FRAME_MAX == 32
           and S485.TX_BELT_FLASH_NUM == T.TX_BELT_FLASH_NUM == 0x03
           and S485.TX_BELT_FLASH_BYTES == T.TX_BELT_FLASH_BYTES == 12
-          and S485.TX_GUARD_REV == T.TX_GUARD_REV == 20261027)
+          and S485.TX_GUARD_REV == T.TX_GUARD_REV == 20261115
+          and S485.TX_FAL_ENABLE_IDS == T.TX_FAL_ENABLE_IDS
+          == frozenset((94, 110)))
     check("Stufe 2: k2_transport nutzt serial485 (Regelstand aktuell)",
           T.check_tx_frame is S485.check_tx_frame and T._nachbau_guard_ok(S485))
     cases = _stufe2_cases()
