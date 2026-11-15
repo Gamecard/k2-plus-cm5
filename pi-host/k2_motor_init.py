@@ -1885,20 +1885,39 @@ class KlippyGpio(GpioOps):
             pass
         raise ValueError("Pin-Nummer für %r nicht auflösbar" % (pin_raw,))
 
+    def _note(self, key, msg):
+        """Diagnose (15.11.2026): Grund einer fehlenden Rücklesung EINMAL je
+        Schlüssel ins klippy.log (vorher still verschluckt)."""
+        seen = self.__dict__.setdefault("_noted", set())
+        if key in seen:
+            return
+        seen.add(key)
+        try:
+            import logging
+            logging.info("[k2_motor] GPIO-Rücklesung: %s", msg)
+        except Exception:
+            pass
+
     def _make_query(self, mcu_name):
         try:
             mcu = _lookup_mcu(self.printer, mcu_name)
-        except Exception:
+        except Exception as exc:
+            self._note(("mcu", mcu_name), "MCU %r nicht gefunden: %r"
+                       % (mcu_name, exc))
             return None
         try:
             # Upstream: try_lookup_command(msgformat) -> None, wenn der Befehl
             # im Dictionary fehlt (mcu.py:1206); erst dann den Query anlegen.
             if hasattr(mcu, "try_lookup_command"):
                 if mcu.try_lookup_command(self.QUERY_FMT) is None:
+                    self._note(("cmd", mcu_name), "MCU %r kennt "
+                               "query_gpio_status nicht" % (mcu_name,))
                     return None
             return mcu.lookup_query_command(
                 self.QUERY_FMT, self.QUERY_RESP, oid=self._query_oid)
-        except Exception:
+        except Exception as exc:
+            self._note(("query", mcu_name), "Abfrage für MCU %r nicht "
+                       "anlegbar: %r" % (mcu_name, exc))
             return None
 
     def handle_connect(self):
@@ -1954,17 +1973,25 @@ class KlippyGpio(GpioOps):
         else:
             query = self._queries.get(mcu_name)
         if query is None:
+            self._note(("noquery", mcu_name), "keine Abfrage für MCU %r "
+                       "(handle_connect gelaufen: %s)"
+                       % (mcu_name, bool(self._queries)))
             return None
         try:
-            pin_num = self._pin_numbers.get(pin_raw)
-            if pin_num is None:
-                pin_num = self._resolve_pin_number(pin_raw)
-                self._pin_numbers[pin_raw] = pin_num
-            res = query.send([int(self._query_oid), int(pin_num)])
+            # FIX 15.11.2026: Klipper kodiert Parameter, deren Name auf
+            # „_pin“ endet (hier gpio_pin), als Enumeration 'pin' – erwartet
+            # wird der Pin-NAME ('PB9'), nicht die Nummer. Mit der Nummer
+            # lehnte msgproto jede Abfrage ab („Unknown value '25' in
+            # enumeration 'pin'“, live 15.11.2026) -> Rücklesung lief auf dem
+            # Pi nie (key799/key800-Prüfung und Pegel-vorher wirkungslos).
+            res = query.send([int(self._query_oid), _clean_pin_name(pin_raw)])
             if not isinstance(res, dict) or "status" not in res:
+                self._note(("resp", pin_raw), "Pin %r: Antwort ohne status: "
+                           "%r" % (pin_raw, res))
                 return None
             return int(res["status"])
-        except Exception:
+        except Exception as exc:
+            self._note(("exc", pin_raw), "Pin %r: %r" % (pin_raw, exc))
             return None
 
 

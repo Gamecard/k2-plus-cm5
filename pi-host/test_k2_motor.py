@@ -552,7 +552,13 @@ class FakeGpioQuery:
         self.oid = int(oid)
 
     def send(self, params):
-        oid, pin_num = int(params[0]), int(params[1])
+        # Wie Klipper (msgproto): gpio_pin ist eine Enumeration 'pin' – nur
+        # der Pin-NAME wird angenommen, eine Zahl wird abgelehnt (live
+        # 15.11.2026: „Unknown value '25' in enumeration 'pin'“).
+        if not isinstance(params[1], str):
+            raise ValueError("Unknown value '%s' in enumeration 'pin'"
+                             % (params[1],))
+        oid, pin_num = int(params[0]), fake_pin_number(params[1])
         if oid != self.oid:
             raise ValueError("oid-Mismatch: %d != %d" % (oid, self.oid))
         # pin_num -> phys über FakePpins auflösen.
