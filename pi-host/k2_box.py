@@ -449,6 +449,19 @@ CHANGE_DEFAULTS = {
     "extrude_sensor_timeout": 90.0,  # live "timeout = 90"
     "extrude_poll_interval": 2.0,    # live 0x10 mode 5 alle ~2 s
     "stage7_delay": 2.0,             # ANNAHME (live 3,7-3,8 s bis mode 7)
+    # 15.11.2026 (Idee aus K2 OpenKlipper): meldet die Box beim Einzug 0x0c
+    # (Odometer-Stillstand), so lange auf den Kopfsensor warten; meldet er
+    # Filament, ist es angekommen (die Box setzt 0x0c auch, wenn der Faden
+    # am Ziel ansteht bzw. zurückfedert) -> kein Stock-Retry, keine
+    # Reinigungsfahrt, kein Fehlschlag. 0 = aus (Verhalten bis 15.11.2026).
+    "extrude_stall_head_grace": 2.5,
+    # 15.11.2026 (Idee aus K2 OpenKlipper): bleibt der Kopfsensor nach dem
+    # Rückzug belegt, obwohl der Hub leer ist (abgeschnittenes Reststück im
+    # Kopf, live 09.11.2026), das Stück im Schacht in Schritten durch die
+    # heiße Düse schieben. stub_clear_tries 0 = aus (nur Warnung wie bisher).
+    "stub_clear_tries": 3,
+    "stub_clear_length": 30.0,       # mm je Schritt
+    "stub_clear_velocity": 300.0,    # mm/min
     # = preload_force_timeout(1 Slot) 380 s (Schnittstellen-Untersuchung:
     # Box-Auto-Preload 1 Slot bis 364 s; vorher 200 s = zu kurz)
     "box_wait_timeout": float(_BOX.preload_force_timeout(0x01)),
@@ -465,7 +478,8 @@ CHANGE_DEFAULTS = {
     "max_tube_length": 3000,
     "ending_material_timeout": 3600.0,
 }
-CHANGE_INT_KEYS = ("wipe_shakes", "max_temp_flush_times", "max_tube_length")
+CHANGE_INT_KEYS = ("wipe_shakes", "max_temp_flush_times", "max_tube_length",
+                   "stub_clear_tries")
 # Restmaterial-Ausspülen (Stock BoxAction.extrusion_all_materials Z.1783–
 # 1824): Stücke zu 80 mm (K80 @0x1c781c), danach set_cool_temp (M104 S140)
 # – Abkühlen nur außerhalb einer Wechselkette (s.
@@ -515,6 +529,9 @@ END_PRINT_CLEARABLE_ERRORS = (
     _BOX.STATUS_HUB_NO_MOVE, _BOX.STATUS_FEED_TIMEOUT,
     _BOX.STATUS_FEED_MAX_LEN, _BOX.STATUS_ODOMETER_STALL,
     _BOX.STATUS_BUFFER_NOT_FULL, _BOX.STATUS_EXTRUDER_TIMEOUT)
+
+# Kopfsensor bei 0x0c (extrude_stall_head_grace): höchstens so oft je Einzug
+STALL_HEAD_MAX = 2
 
 CHAIN_STATE_NAME = "_ktwo_box_chain"
 STEP_STATE_NAME = "_ktwo_box_step"
@@ -2206,6 +2223,18 @@ def parse_options(opts):
                 "runout_tail_velocity"):
         if not cfg[key] > 0:
             raise ValueError("%s muss > 0 sein: %r" % (key, cfg[key]))
+    if not 0.0 <= cfg["extrude_stall_head_grace"] <= 10.0:
+        raise ValueError("extrude_stall_head_grace muss 0..10 s sein: %r"
+                         % (cfg["extrude_stall_head_grace"],))
+    if not 0 <= cfg["stub_clear_tries"] <= 5:
+        raise ValueError("stub_clear_tries muss 0..5 sein: %r"
+                         % (cfg["stub_clear_tries"],))
+    if not 5.0 <= cfg["stub_clear_length"] <= 60.0:
+        raise ValueError("stub_clear_length muss 5..60 mm sein: %r"
+                         % (cfg["stub_clear_length"],))
+    if not 0.0 < cfg["stub_clear_velocity"] <= 600.0:
+        raise ValueError("stub_clear_velocity muss > 0 und <= 600 mm/min "
+                         "sein: %r" % (cfg["stub_clear_velocity"],))
     if cfg["cut_dwell"] > 2.0:
         raise ValueError("cut_dwell > 2 s unplausibel: %r" % (cfg["cut_dwell"],))
     for key in ("buffer_empty_len", "tn_extrude_temp", "change_z_hop", "cut_dwell",
@@ -2838,7 +2867,7 @@ class K2BoxController:
     def do_extrude(self, slot, odo_polls=ODO_POLLS_DEFAULT, dry_run=False,
                    sensor_fn=None, sensor_timeout=90.0, poll_interval=2.0,
                    sensor_check=0.1, stage7_fn=None, stage7_delay=0.0,
-                   retry_fn=None, inhibit=True):
+                   retry_fn=None, inhibit=True, stall_head_grace=0.0):
         """Box-Extrude A4 (Byte-folge == cfsseq.build_extrude_sequence).
 
         ``inhibit`` (18.10.2026, A2): False = 0x0f [01] vor und 0x0f [00]
@@ -2882,6 +2911,17 @@ class K2BoxController:
           das Odometer > p mm in 300 ms läuft, sonst 0x0e).
         Ohne beide Callbacks bleibt die Frame-Folge byte-identisch zu
         EXTRUDE_LIVE_CMDS_B.
+
+        Kopfsensor bei 0x0c (15.11.2026, Idee aus K2 OpenKlipper):
+        ``stall_head_grace`` > 0 und ``sensor_fn`` vorhanden -> meldet eine
+        Förderphase 0x0c, wird bis zu ``stall_head_grace`` s auf den
+        Kopfsensor gewartet. Meldet er Filament, gilt der Faden als
+        angekommen (``retry_fn("arrived", exc)`` nur zur Meldung): mode 4 wird
+        einmal neu gestartet, die Schleife sieht den Sensor sofort und geht
+        zu mode 6 – ohne Reinigungsfahrt und ohne das Stock-Retry-Budget zu
+        verbrauchen. Höchstens STALL_HEAD_MAX-mal je Einzug. Bleibt der
+        Sensor leer, läuft der Stock-Retry unverändert. Default 0 = aus
+        (Frame-Folge wie bisher).
         """
         idx, letter, mask = parse_slot(slot)
         if isinstance(odo_polls, bool) or not isinstance(odo_polls, int) \
@@ -2962,6 +3002,43 @@ class K2BoxController:
                     last = self.clock()
                 self.pause(float(sensor_check))
 
+        arrived = []
+
+        def _head_arrived():
+            # bis stall_head_grace s auf den Kopfsensor warten
+            t0 = self.clock()
+            while True:
+                if sensor_fn():
+                    return True
+                if self.clock() - t0 >= float(stall_head_grace):
+                    return False
+                self._cancel_wait("Einzug SLOT=%s (Kopfsensor nach 0x0c)"
+                                  % letter)
+                self.pause(float(sensor_check))
+
+        def _feed_head():
+            # _feed mit Blick auf den Kopfsensor bei 0x0c (s. Docstring)
+            while True:
+                try:
+                    _feed()
+                    return
+                except CfsStatusError as exc:
+                    if exc.status != stall or sensor_fn is None \
+                            or float(stall_head_grace) <= 0.0 \
+                            or len(arrived) >= STALL_HEAD_MAX:
+                        raise
+                    try:
+                        ok = _head_arrived()
+                    except BoxCancelled:
+                        _stop_feed()
+                        raise
+                    if not ok:
+                        raise
+                    arrived.append(exc)
+                    retries.append("0x0c-kopfsensor")
+                    if retry_fn is not None:
+                        retry_fn("arrived", exc)
+
         def _attempt():
             # Ein Versuch: mode 0, dann Förderphase mit höchstens
             # max_restart mode-4-Neustarts bei 0x0c.
@@ -2979,7 +3056,7 @@ class K2BoxController:
             restarts = 0
             while True:
                 try:
-                    _feed()
+                    _feed_head()
                     return
                 except CfsStatusError as exc:
                     if exc.status != stall or restarts >= max_restart:
@@ -4541,6 +4618,64 @@ class PrinterK2Box:
             self.head_cut = False       # kein (abgeschnittener) Faden mehr
         return state
 
+    def _clear_head_stub(self, gcmd, what):
+        """Reststück im Kopf beseitigen (15.11.2026, Idee aus K2
+        OpenKlipper; Vorfall 09.11.2026: nach dem Schnitt blieb ein
+        PETG-Stück am Kopfsensor, der Hub war leer, jeder Einzug wurde
+        abgelehnt und der Nutzer musste das Stück von Hand durchdrücken).
+
+        Nur wenn: stub_clear_tries > 0, allow_write + allow_move, Kopfsensor
+        meldet Filament, Hub LEER (der Faden hängt nicht mehr an der Box –
+        sonst würde gegen die Spule gefördert), Kopf im Schacht, Düse heiß
+        genug (heizt auf die Material-Temperatur der Düse). Dann bis zu
+        stub_clear_tries-mal stub_clear_length mm durch die Düse schieben,
+        nach jedem Schritt den Kopfsensor prüfen. -> True, wenn der Sensor
+        danach frei ist; False = nichts getan bzw. erfolglos (Aufrufer
+        meldet wie bisher)."""
+        c = self.cfg
+        tries = int(c.get("stub_clear_tries") or 0)
+        if tries <= 0 or not c.get("allow_write") or not c.get("allow_move"):
+            return False
+        if self._head_filament() is not True:
+            return False
+        try:
+            hub = self._ensure_controller().hub_mask()
+        except Exception as exc:
+            gcmd.respond_info("[k2_box] %s: Reststück-Prüfung – Hub nicht "
+                              "lesbar (%s), kein Durchschieben"
+                              % (what, self._exc_text(exc)))
+            return False
+        if hub:
+            return False
+        length = float(c["stub_clear_length"])
+        vel = float(c["stub_clear_velocity"])
+        gcmd.respond_info(
+            "[k2_box] %s: Kopfsensor meldet Filament, Hub leer -> Reststück "
+            "im Kopf; schiebe es im Schacht durch die Düse (bis %d x %s mm, "
+            "stub_clear_tries)" % (what, tries, _n(length)))
+        self._go_extrude_pos(gcmd)
+        self._heat(gcmd, self._change_temp(gcmd, self._nozzle_key(),
+                                           "Reststück"))
+        if self._obj_status("extruder").get("can_extrude") is False:
+            gcmd.respond_info("[k2_box] %s: Düse unter der Mindesttemperatur "
+                              "– kein Durchschieben" % (what,))
+            return False
+        for i in range(tries):
+            # M400 + kurze Verweilzeit: der Sensor meldet über den Reactor,
+            # der während des Wartens weiterläuft
+            self._move(gcmd, "Reststück durchschieben %d/%d" % (i + 1, tries),
+                       gcode_extruder_move(length, vel)
+                       + ["M400", "G4 P500", "M400"])
+            if self._head_filament() is False:
+                gcmd.respond_info(
+                    "[k2_box] %s: Reststück durchgeschoben (%s mm), "
+                    "Kopfsensor frei" % (what, _n(length * (i + 1))))
+                return True
+        gcmd.respond_info(
+            "[k2_box] WARNUNG %s: Reststück nach %d x %s mm noch am "
+            "Kopfsensor – von Hand entfernen" % (what, tries, _n(length)))
+        return False
+
     def _respond_error(self, msg):
         # "!! [k2_box] …" + logging.error, wirft nie
         self.konsole.fehler(msg)
@@ -5704,6 +5839,7 @@ class PrinterK2Box:
                     ctl.loaded_slot = None
                     gcmd.respond_info("[k2_box] RETRUDE: Hub leer – kein "
                                       "Box-Rückzug nötig")
+                    self._clear_head_stub(gcmd, "RETRUDE")
                     return
                 if hub not in SLOT_MASKS:
                     raise BoxChangeError("Hub meldet mehrere Slots (0x%02x)"
@@ -5714,7 +5850,8 @@ class PrinterK2Box:
             self.head_cut = False
             for i in range(RETRUDE_REPEATS_DEFAULT, len(steps)):
                 _extr(i)
-            if self._head_filament() is True:
+            if self._head_filament() is True \
+                    and not self._clear_head_stub(gcmd, "RETRUDE"):
                 gcmd.respond_info("[k2_box] WARNUNG: Kopfsensor meldet nach dem "
                                   "Rückzug noch Filament")
             gcmd.respond_info("[k2_box] RETRUDE Slot %s ok (Hub frei)"
@@ -5845,7 +5982,9 @@ class PrinterK2Box:
                 # Schnitt blieb ein PETG-Reststück am Kopfsensor, der Hub war
                 # leer -> jeder Einzug wurde abgelehnt, ohne dass die Meldung
                 # sagte, was zu tun ist.
-                if not hub:
+                if not hub and self._clear_head_stub(gcmd, "EXTRUDE"):
+                    head = False        # Reststück ist raus -> normal laden
+                elif not hub:
                     raise BoxChangeError(
                         "key852 Reststück im Druckkopf: Kopfsensor meldet "
                         "Filament, aber der Hub der CFS ist leer – ein "
@@ -5857,8 +5996,10 @@ class PrinterK2Box:
                         "Hilfsstück wieder herausziehen, Schlauch einstecken, "
                         "4) KTWO_BOX_ERROR_CLEAR, Wechsel (T<n>) wiederholen, "
                         "dann RESUME")
-                raise BoxChangeError("key852 Kopfsensor meldet noch Filament – "
-                                     "erst KTWO_BOX_CUT + KTWO_BOX_RETRUDE")
+                else:
+                    raise BoxChangeError(
+                        "key852 Kopfsensor meldet noch Filament – "
+                        "erst KTWO_BOX_CUT + KTWO_BOX_RETRUDE")
             sensor_fn = None
             if head is not None:
                 sensor_fn = lambda: self._head_filament() is True  # noqa: E731
@@ -5875,7 +6016,13 @@ class PrinterK2Box:
                 # Stock-Retry bei 0x0c (do_extrude): vor dem mode-4-Neustart
                 # K2-Stock „move to retry“ = Düsenreinigung (temp_pos, Kopf
                 # bleibt im Schacht), vor dem Neuversuch nur die Meldung.
-                if kind == "restart":
+                if kind == "arrived":
+                    gcmd.respond_info(
+                        "[k2_box] EXTRUDE %s: %s – Kopfsensor meldet Filament "
+                        "-> als angekommen gewertet (kein Stock-Retry, keine "
+                        "Reinigungsfahrt; extrude_stall_head_grace)" % (
+                            tnn, self._exc_text(exc)))
+                elif kind == "restart":
                     gcmd.respond_info(
                         "[k2_box] EXTRUDE %s: %s – Stock-Retry: Düsenreinigung, "
                         "mode 4 einmal neu" % (tnn, self._exc_text(exc)))
@@ -5897,7 +6044,8 @@ class PrinterK2Box:
                 sensor_timeout=c["extrude_sensor_timeout"],
                 poll_interval=c["extrude_poll_interval"],
                 stage7_fn=_stage7, stage7_delay=c["stage7_delay"],
-                retry_fn=_retry, inhibit=inhibit)
+                retry_fn=_retry, inhibit=inhibit,
+                stall_head_grace=c["extrude_stall_head_grace"])
             self._move(gcmd, "Bewegungen abwarten", ["M400"], wrap=False)
             self._remember_tag(ctl, letter)
             # frisch geladenes Ende (nur Stage 7 in der Düse): Rückzug ohne

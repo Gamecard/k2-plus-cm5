@@ -165,6 +165,10 @@ class FakeBoxBus:
         self.trace = None
         self.head = False
         self.head_at_mm = None
+        # 15.11.2026: Kopfsensor meldet beim 0x0c-Stillstand Filament
+        # (Faden steht am Ziel an) / Reststück bleibt nach dem Rückzug
+        self.head_on_stall = False
+        self.keep_head_after_retrude = False
         self.need_extruder_for_mode7 = False
         self.extruder_mm = 0.0
         self.preload_polls = 0  # so viele 0x0a-Polls noch PRELOAD melden
@@ -315,6 +319,8 @@ class FakeBoxBus:
                         and self._phase_polls >= sp[self._phase]:
                     self.state, self.stored_error = 4, self.stall_status
                     self.feeding = False
+                    if self.head_on_stall:
+                        self.head = True
                     return A, self.stall_status, 0x10, struct.pack(">f", -self.odo)
                 if mask == 0x01 and self.fail_after_mm is not None:
                     if self.odo >= self.fail_after_mm:
@@ -356,7 +362,8 @@ class FakeBoxBus:
                     self.hub_mask = 0x00
                 else:
                     self.hub_mask &= (~mask) & 0xFF
-                self.head = False
+                if not self.keep_head_after_retrude:
+                    self.head = False
             self.state = 0
             return A, 0x00, 0x11, b""
         if fun == 0x05:  # Buffer
@@ -4818,6 +4825,137 @@ def test_extrude_retry_huelle():
     return "Reinigung vor mode-4-Neustart, Neuversuch gemeldet, Dauerfehler -> PAUSE"
 
 
+def test_extrude_stillstand_kopfsensor():
+    """15.11.2026 (Idee aus K2 OpenKlipper): 0x0c beim Einzug, aber der
+    Kopfsensor meldet Filament -> als angekommen gewertet: KEINE
+    Reinigungsfahrt, KEIN Neuversuch ab mode 0, Einzug ok. Mit
+    extrude_stall_head_grace 0 wie bisher (Stock-Retry). Sensor bleibt leer
+    -> Stock-Retry unverändert (test_extrude_retry_huelle)."""
+    def lauf(**opt):
+        bus, printer, mod = build_hull(**opt)
+        bus.trace = []
+        bus.head_at_mm = 150.0
+        bus.need_extruder_for_mode7 = True
+        bus.stall_phases = [1]          # erste Förderphase: 0x0c beim 1. Poll
+        bus.head_on_stall = True        # ... und der Faden steht am Kopf an
+        g = FakeGcmd({"TNN": "T1B"})
+        mod.cmd_extrude(g)
+        return bus, printer, mod, g
+    bus, printer, mod, g = lauf()
+    assert any("als angekommen gewertet" in m for m in g.infos), g.infos
+    assert not any("Stock-Retry: Düsenreinigung" in m or "ein Neuversuch ab"
+                   in m for m in g.infos), g.infos
+    assert any("EXTRUDE T1B ok" in m for m in g.infos), g.infos
+    tr = bus.trace
+    m4 = [i for i, e in enumerate(tr)
+          if e[0] == "bus" and e[1] == 0x10 and e[2][1] == 0x04]
+    assert len(m4) == 2, m4                       # ein Neustart, kein dritter
+    assert "G0 X170 F12000" not in [e[1] for e in tr[m4[0]:m4[1]]
+                                    if e[0] == "gcode"], "keine Reinigung"
+    assert not [e for e in tr if e[0] == "bus" and e[1] == 0x11], "kein 04/11"
+    assert mod.controller.last_extrude_retries == ["0x0c-kopfsensor"], \
+        mod.controller.last_extrude_retries
+    assert mod.controller.loaded_slot == "B" and not printer.paused
+    assert mod.cfg["extrude_stall_head_grace"] == 2.5
+    # aus -> Stock-Retry (Reinigung, mode 4 neu) wie bis 15.11.
+    bus, printer, mod, g = lauf(extrude_stall_head_grace="0")
+    assert any("Stock-Retry: Düsenreinigung" in m for m in g.infos), g.infos
+    assert not any("als angekommen" in m for m in g.infos), g.infos
+    assert any("EXTRUDE T1B ok" in m for m in g.infos), g.infos
+    # Controller-Default aus (Frame-Folge der Live-Vergleiche unverändert)
+    import inspect
+    assert inspect.signature(
+        K.K2BoxController.do_extrude).parameters["stall_head_grace"].default == 0.0
+    # Grenzen
+    for bad in ({"extrude_stall_head_grace": "11"}, {"stub_clear_tries": "6"},
+                {"stub_clear_length": "2"}, {"stub_clear_velocity": "900"}):
+        try:
+            build_hull(**bad)
+        except Exception:
+            pass
+        else:
+            raise AssertionError("Grenze nicht geprüft: %r" % (bad,))
+    return ("0x0c + Kopfsensor: angekommen, keine Reinigung/kein Neuversuch; "
+            "aus = Stock-Retry; Controller-Default 0; Grenzen")
+
+
+def _stub_hull(clear_after, hub=0x01, **opt):
+    """Kopf voll, Slot A im Hub; nach dem Box-Rückzug bleibt der Kopfsensor
+    belegt (Reststück) und wird nach ``clear_after`` Durchschiebe-Schritten
+    frei (None = nie)."""
+    bus, printer, mod = build_hull(allow_write="True", **opt)
+    bus.hub_mask, bus.head = hub, True
+    bus.keep_head_after_retrude = True
+    pushes = []
+    sim = printer.sim
+
+    def sim2(line, sim=sim):
+        if line == "G1 E30 F300":
+            pushes.append(line)
+            if clear_after is not None and len(pushes) >= clear_after:
+                bus.head = False
+        return sim(line)
+    printer.sim = sim2
+    return bus, printer, mod, pushes
+
+
+def test_reststueck_durchschieben():
+    """15.11.2026 (Idee aus K2 OpenKlipper; Vorfall 09.11.2026): Kopfsensor
+    nach dem Rückzug belegt + Hub leer -> Reststück in 30-mm-Schritten durch
+    die heiße Düse schieben, bis der Sensor frei ist."""
+    # a) nach RETRUDE: frei nach 2 Schritten, keine Warnung
+    bus, printer, mod, pushes = _stub_hull(2)
+    g = FakeGcmd({})
+    mod.cmd_retrude(g)
+    assert len(pushes) == 2, pushes
+    assert any("Reststück durchgeschoben (60 mm)" in m for m in g.infos), g.infos
+    assert not any("WARNUNG" in m for m in g.infos), g.infos
+    assert any("RETRUDE Slot A ok" in m for m in g.infos), g.infos
+    assert mod.chain_error == "" and not printer.paused
+    # b) bleibt -> 3 Schritte, dann Warnung (Rückzug selbst ok)
+    bus, printer, mod, pushes = _stub_hull(None)
+    g = FakeGcmd({})
+    mod.cmd_retrude(g)
+    assert len(pushes) == 3, pushes
+    assert any("noch am Kopfsensor" in m for m in g.infos), g.infos
+    assert any("Kopfsensor meldet nach dem Rückzug noch Filament" in m
+               for m in g.infos), g.infos
+    # c) aus -> kein Schritt, alte Warnung
+    bus, printer, mod, pushes = _stub_hull(1, stub_clear_tries="0")
+    g = FakeGcmd({})
+    mod.cmd_retrude(g)
+    assert pushes == [] and any("noch Filament" in m for m in g.infos), g.infos
+    # d) ohne allow_move -> kein Schritt
+    bus, printer, mod, pushes = _stub_hull(1, allow_move="False")
+    mod.cmd_retrude(FakeGcmd({}))
+    assert pushes == []
+    # e) EXTRUDE: Reststück (Kopf voll, Hub leer) -> durchschieben, dann laden
+    bus, printer, mod, pushes = _stub_hull(1, hub=0x00)
+    bus.keep_head_after_retrude = False
+    bus.head_at_mm = 150.0
+    bus.need_extruder_for_mode7 = True
+    g = FakeGcmd({"TNN": "T1B"})
+    mod.cmd_extrude(g)
+    assert len(pushes) == 1, pushes
+    assert any("Reststück durchgeschoben (30 mm)" in m for m in g.infos), g.infos
+    assert any("EXTRUDE T1B ok" in m for m in g.infos), g.infos
+    #    bleibt -> key852 wie bisher (mit Abhilfe-Schritten)
+    bus, printer, mod, pushes = _stub_hull(None, hub=0x00)
+    g = FakeGcmd({"TNN": "T1B"})
+    try:
+        mod.cmd_extrude(g)
+        err = ""
+    except Exception as exc:        # außerhalb eines Drucks: G-Code-Fehler
+        err = str(exc)
+    assert len(pushes) == 3 and "key852 Reststück im Druckkopf" in err, \
+        (pushes, err)
+    # f) Hub belegt (Faden hängt an der Box) -> nie schieben
+    bus, printer, mod, pushes = _stub_hull(1, hub=0x02)
+    assert mod._clear_head_stub(FakeGcmd({}), "TEST") is False and pushes == []
+    return ("RETRUDE: frei nach 2x30 mm; bleibt -> Warnung; aus/ohne Freigabe "
+            "nichts; EXTRUDE: durchschieben + laden bzw. key852; Hub belegt nie")
+
+
 class _Heater:
     def __init__(self, min_t):
         self.min_extrude_temp = min_t
@@ -6967,6 +7105,10 @@ TESTS = [
      test_ending_config_makro),
     ("Stock-Retry bei 0x0c (Controller, == Live-Log)", test_extrude_stock_retry),
     ("Stock-Retry bei 0x0c (KTWO_BOX_EXTRUDE-Hülle)", test_extrude_retry_huelle),
+    ("0x0c beim Einzug: Kopfsensor meldet Filament -> angekommen (15.11.2026)",
+     test_extrude_stillstand_kopfsensor),
+    ("Reststück im Kopf durchschieben (15.11.2026)",
+     test_reststueck_durchschieben),
     ("Temperatur-Guard KTWO_BOX_LOAD/UNLOAD", test_temperatur_guard),
     ("L3 Fahrgrenzen [k2_limits] im k2_box-Schritt", test_limits_l3),
     ("M8200-Kette hält Fahrgrenzen weit bis END_OPT (CP7)", test_m8200_kette_grenzen),
