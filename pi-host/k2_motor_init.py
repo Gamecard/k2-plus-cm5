@@ -178,6 +178,12 @@ PIN_MOTORS = ("x", "y", "z", "z1")
 # e“ (live 22.10./26.10.2026). Fremdbefund (Projekt K2 OpenKlipper, GPLv3,
 # docs/MOTOR-CONTROLLER.md): beim Wecken PB4/PB5 low halten. Nur die Idee
 # übernommen. Stock F008 setzt die E-Leitungen nicht (motor_control.cfg).
+# ACHTUNG (Messung 15.11.2026): mit motor_e_dir als MCU_digital_out läuft
+# der Extruder nach einem Host-Neustart RÜCKWÄRTS – Klipper schickt für
+# jeden digital_out beim Wiederverbinden „update_digital_out value=
+# <Startwert>“ (on_restart) und überschreibt damit den DIR-Pegel, den der
+# Stepper relativ weiterschaltet. Deshalb in k2-motor.cfg abgeschaltet;
+# gilt als Risiko grundsätzlich für alle Strapping-Pins auf DIR-Leitungen.
 STRAP_MOTORS = PIN_MOTORS + ("e",)
 ALWAYS_READ = (9, 10, 25)
 HOST_ONLY_IDS = (226,)
