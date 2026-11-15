@@ -178,12 +178,14 @@ PIN_MOTORS = ("x", "y", "z", "z1")
 # e“ (live 22.10./26.10.2026). Fremdbefund (Projekt K2 OpenKlipper, GPLv3,
 # docs/MOTOR-CONTROLLER.md): beim Wecken PB4/PB5 low halten. Nur die Idee
 # übernommen. Stock F008 setzt die E-Leitungen nicht (motor_control.cfg).
-# ACHTUNG (Messung 15.11.2026): mit motor_e_dir als MCU_digital_out läuft
+# ACHTUNG (Messung 15.11.2026): als Upstream-MCU_digital_out angelegt läuft
 # der Extruder nach einem Host-Neustart RÜCKWÄRTS – Klipper schickt für
 # jeden digital_out beim Wiederverbinden „update_digital_out value=
 # <Startwert>“ (on_restart) und überschreibt damit den DIR-Pegel, den der
-# Stepper relativ weiterschaltet. Deshalb in k2-motor.cfg abgeschaltet;
-# gilt als Risiko grundsätzlich für alle Strapping-Pins auf DIR-Leitungen.
+# Stepper relativ weiterschaltet. Deshalb sind alle Dir/Step-Strapping-Pins
+# seit dem Umbau 15.11.2026 Rohpins (KlippyGpio, Docstring „ROHPINS“).
+# Gemessen danach (Lagegeber, je G1 E3 = -2,73 rad): frisch nach MCU-Reset,
+# nach Host-Neustart mit DIR low und mit DIR high – Richtung jeweils richtig.
 STRAP_MOTORS = PIN_MOTORS + ("e",)
 ALWAYS_READ = (9, 10, 25)
 HOST_ONLY_IDS = (226,)
@@ -1797,6 +1799,27 @@ class KlippyGpio(GpioOps):
     output_pin.py ``setup_max_duration(0.)``, stepper_enable). Start- und
     Shutdown-Wert bleiben Upstream-Default (= Invertierung → phys. 0, bei
     ``!PA9`` phys. 1 = Treiber aus).
+
+    ROHPINS (Umbau 15.11.2026): Dir/Step-Strapping-Pins werden NICHT mehr als
+    Upstream-``MCU_digital_out`` angelegt. Grund (gemessen 15.11.2026):
+    ``MCU_digital_out`` schickt bei jedem Host-Neustart ohne MCU-Reset
+    ``update_digital_out oid value=<Startwert>`` (mcu.py, ``on_restart=True``;
+    Startwert = Invertierung, also ``!PB7``/``!nozzle_mcu:PB4`` physisch 1,
+    alle anderen 0). Der Stepper der MCU schaltet seine DIR-Leitung aber
+    RELATIV zum letzten Pegel um – nach dem Zwangssetzen passen Pegel und
+    Stepper-Zustand nicht mehr (Extruder lief rückwärts: Lagegeber +2,73 rad
+    statt −2,73 rad je G1 E3). Jetzt wie im Projekt K2 OpenKlipper (nur die
+    Idee): je Pin ein eigenes ``create_oid`` + ``config_digital_out oid pin
+    value=0 default_value=0 max_duration=0`` per ``add_config_cmd`` (kein
+    on_restart-Befehl; bei frischer MCU-Config physisch 0 wie der Stepper),
+    gesetzt wird sofort per ``update_digital_out oid=%c value=%c`` nach
+    ``toolhead.wait_moves()``. Damit bleibt bei einem Host-Neustart der vom
+    Stepper hinterlassene Pegel stehen; der Controller liest ihn vor P1 und
+    stellt ihn in P7 wieder her. Review 1 gilt weiter (alles vor connect),
+    Review 2 (print_time) nur noch für Registry-Pins. Der Enable-Pin
+    (``registry_pins``, Default ``!PA9``) bleibt ``MCU_digital_out`` wie
+    bisher. ``[duplicate_pin_override]`` wird für die Rohpins nicht mehr
+    gebraucht (Einträge schaden nicht).
     """
 
     QUERY_FMT = "query_gpio_status oid=%c gpio_pin=%c"
@@ -1805,11 +1828,20 @@ class KlippyGpio(GpioOps):
     GPIO_QUERY_OID = 0
     # Stock: setup_max_duration(0.0) für alle Strapping-Pins (s. Docstring).
     STRAPPING_MAX_DURATION = 0.0
+    RAW_CONFIG_FMT = ("config_digital_out oid=%d pin=%s value=0 "
+                      "default_value=0 max_duration=0")
+    RAW_SET_FMT = "update_digital_out oid=%c value=%c"
 
     def __init__(self, printer, main_mcu_name="mcu", pin_specs=None,
-                 extra_mcu_names=()):
+                 extra_mcu_names=(), registry_pins=None):
         self.printer = printer
         self.main_mcu_name = main_mcu_name
+        # Pins, die weiter über das Upstream-Objekt 'pins' laufen
+        # (MCU_digital_out); alle anderen sind Rohpins (s. Docstring).
+        self.registry_pins = tuple(registry_pins if registry_pins is not None
+                                   else (ENABLE_PIN_RAW,))
+        self._raw = {}       # pin_raw -> {mcu_name, mcu, oid, pin, invert}
+        self._set_cmds = {}  # MCU-Config-Name -> update_digital_out
         # 15.11.2026: Strapping-Pins auch auf weiteren MCUs (E: nozzle_mcu
         # PB4/PB5). Je MCU eine eigene Abfrage query_gpio_status; fehlt der
         # Befehl dort im Dictionary, liefert query_pin None (der Controller
@@ -1848,6 +1880,25 @@ class KlippyGpio(GpioOps):
                 elif prefix not in (main_mcu_name, chip):
                     continue
             self._pin_mcu[raw] = mcu_name
+            if raw not in self.registry_pins:
+                # Rohpin: eigenes OID + config_digital_out im Config-Callback
+                # (vor connect), ohne on_restart-Befehl (s. Docstring).
+                mcu = _lookup_mcu(printer, mcu_name)
+                # "!" steht bei Klipper ganz vorn ("!nozzle_mcu:PB4"), wie
+                # bei parse_pin_level – beide Schreibweisen erkennen.
+                txt = str(raw).strip()
+                inv = (txt.lstrip("^~").startswith("!")
+                       or txt.split(":")[-1].strip().lstrip("^~").startswith("!"))
+                entry = {"mcu_name": mcu_name, "mcu": mcu,
+                         "oid": int(mcu.create_oid()),
+                         "pin": _clean_pin_name(raw),
+                         "invert": 1 if inv else 0}
+                mcu.register_config_callback(
+                    lambda e=entry: e["mcu"].add_config_cmd(
+                        self.RAW_CONFIG_FMT % (e["oid"], e["pin"])))
+                self._raw[raw] = entry
+                self._pins[raw] = entry
+                continue
             # Upstream-Signatur: setup_pin('digital_out', pin_desc) -> MCU_digital_out
             pin = ppins.setup_pin("digital_out", raw)
             # Statischer Pin wie Stock: max_duration 0 (kein MCU-Shutdown, wenn
@@ -1935,12 +1986,35 @@ class KlippyGpio(GpioOps):
         for name in sorted(set(self._pin_mcu.values())):
             if name not in self._queries:
                 self._queries[name] = self._make_query(name)
+        # Rohpins: Setzbefehl je MCU (Lookup erst nach dem Connect möglich).
+        self._set_cmds = {}
+        for name in sorted(set(e["mcu_name"] for e in self._raw.values())):
+            try:
+                self._set_cmds[name] = _lookup_mcu(
+                    self.printer, name).lookup_command(self.RAW_SET_FMT)
+            except Exception as exc:
+                self._note(("setcmd", name), "update_digital_out für MCU %r "
+                           "nicht verfügbar: %r" % (name, exc))
 
     def set_pin(self, pin_raw, level):
         if pin_raw not in self._pins:
             raise KeyError(
                 "Pin %r nicht in load_config angelegt (setup_pin fehlt vor "
                 "connect – Review 1)" % (pin_raw,))
+        entry = self._raw.get(pin_raw)
+        if entry is not None:
+            # Rohpin: sofort setzen (physisch = logisch ^ Invertierung). Vorher
+            # die Bewegungs-Queue leeren – ein DIR-Pegel darf sich nie unter
+            # noch geplanten Schritten ändern.
+            cmd = self._set_cmds.get(entry["mcu_name"])
+            if cmd is None:
+                raise RuntimeError(
+                    "update_digital_out für MCU %r nicht verfügbar (Pin %r)"
+                    % (entry["mcu_name"], pin_raw))
+            self.sync()
+            cmd.send([int(entry["oid"]),
+                      (1 if int(level) else 0) ^ int(entry["invert"])])
+            return
         pin = self._pins[pin_raw]
         # Gültige print_time (Review 2, Variante a – s. Docstring).
         try:

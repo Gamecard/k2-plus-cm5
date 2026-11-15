@@ -498,7 +498,8 @@ class FakeOutputPin:
         self.pin_raw = pin_raw
         self.pin_number = int(pin_number)
         last = str(pin_raw).split(":")[-1].strip()
-        self.invert = last.startswith("!")
+        self.invert = (last.startswith("!")
+                       or str(pin_raw).strip().startswith("!"))
         self.logical = None
         self.phys = 0
         self.last_print_time = None
@@ -561,6 +562,10 @@ class FakeGpioQuery:
         oid, pin_num = int(params[0]), fake_pin_number(params[1])
         if oid != self.oid:
             raise ValueError("oid-Mismatch: %d != %d" % (oid, self.oid))
+        # Rohpins dieser MCU (config_digital_out per add_config_cmd)
+        for ent in self.mcu.raw_out.values():
+            if ent["pin"] == str(params[1]):
+                return {"oid": oid, "status": int(ent["phys"])}
         # pin_num -> phys über FakePpins auflösen.
         ppins = self.mcu.printer.pp
         for pin in ppins.pins.values():
@@ -568,6 +573,21 @@ class FakeGpioQuery:
                 return {"oid": oid, "status": int(pin.phys)}
         # Nie gesetzter Pin: Hardware liest 0.
         return {"oid": oid, "status": 0}
+
+
+class FakeRawSet:
+    """update_digital_out oid=%c value=%c (sofort, ohne print_time)."""
+
+    def __init__(self, mcu):
+        self.mcu = mcu
+
+    def send(self, params):
+        oid, value = int(params[0]), int(params[1])
+        if oid not in self.mcu.raw_out:
+            raise RuntimeError("update_digital_out: oid %d nicht konfiguriert"
+                               % oid)
+        self.mcu.raw_out[oid]["phys"] = value
+        self.mcu.raw_calls.append((self.mcu.raw_out[oid]["pin"], value))
 
 
 class FakeTransparentQuery:
@@ -591,6 +611,9 @@ class FakeConfigMcu:
         self._oid_counter = 0
         self.config_cmds = []
         self._callbacks = []
+        self.raw_out = {}    # oid -> {"pin": Name, "phys": Pegel}
+        self.raw_calls = []  # [(Pin-Name, phys)]
+        self.supports_update = True
 
     def create_oid(self):
         if self.printer.connected:
@@ -601,7 +624,16 @@ class FakeConfigMcu:
     def add_config_cmd(self, cmd):
         if self.printer.connected:
             raise RuntimeError("add_config_cmd nach connect verboten (wie Klipper)")
-        self.config_cmds.append(str(cmd))
+        cmd = str(cmd)
+        # Rohpin: config_digital_out oid=… pin=NAME value=… (Klipper nimmt
+        # den Pin-NAMEN; ein on_restart-Befehl darf nicht dabei sein)
+        if cmd.startswith("config_digital_out "):
+            kv = dict(t.split("=", 1) for t in cmd.split()[1:])
+            assert not kv["pin"].isdigit(), "pin als Name erwartet: %r" % cmd
+            self.raw_out[int(kv["oid"])] = {"pin": kv["pin"],
+                                            "phys": int(kv["value"])}
+            return
+        self.config_cmds.append(cmd)
 
     def register_config_callback(self, cb):
         if self.printer.connected:
@@ -626,6 +658,10 @@ class FakeConfigMcu:
     def lookup_command(self, fmt, cq=None):
         if not self.printer.connected:
             raise RuntimeError("lookup_command vor connect verboten")
+        if "update_digital_out" in fmt:
+            if not self.supports_update:
+                raise RuntimeError("update_digital_out fehlt im Dictionary")
+            return FakeRawSet(self)
         if "set_digital_out" in fmt:
             return ("set_digital_out", fmt)
         if "query_gpio_status" in fmt and self.supports_query_gpio:
@@ -1082,12 +1118,17 @@ def test_review_config_vor_connect():
     # FRÜH (Config-Phase): KlippyGpio legt alle Pins + Query-OID an.
     gpio = K.KlippyGpio(printer, "mcu", pin_specs=specs)
     assert len(gpio._pins) == 9, "Pins %d != 9" % len(gpio._pins)
-    # Firmware wertet die Query-OID nicht aus -> keine OID verbraucht.
+    # Umbau 15.11.2026: 8 Dir/Step = Rohpins (eigenes OID, kein
+    # MCU_digital_out), nur der Enable-Pin läuft über 'pins'.
+    assert len(gpio._raw) == 8 and list(printer.pp.pins) == [K.ENABLE_PIN_RAW]
+    # Firmware wertet die Query-OID nicht aus -> keine OID verbraucht
+    # (die 8 OIDs gehören den Rohpins).
     assert gpio._query_oid == K.KlippyGpio.GPIO_QUERY_OID == 0, gpio._query_oid
-    assert printer.main_mcu._oid_counter == 0, "Query darf keine OID belegen"
-    # Strapping-Pins statisch wie Stock (setup_max_duration(0.0)):
+    assert printer.main_mcu._oid_counter == 8, "8 Rohpin-OIDs, Query keine"
+    # Enable-Pin statisch wie Stock (setup_max_duration(0.0)):
     md = {r: p.max_duration for r, p in printer.pp.pins.items()}
     assert set(md.values()) == {0.0}, "max_duration %r" % (md,)
+    assert printer.main_mcu.raw_out == {}, "Config-Befehle erst im Callback"
     # Transparent analog: OID + Callback VOR connect (Review 1, zweite Hälfte).
     t_oid = printer.nozzle_mcu.create_oid()
     assert t_oid == 1, "transparent-OID %r" % (t_oid,)
@@ -1099,6 +1140,15 @@ def test_review_config_vor_connect():
     assert printer.connected is True
     assert printer.nozzle_mcu.config_cmds == [
         "config_transparent oid=1"], printer.nozzle_mcu.config_cmds
+    # Rohpins: je Pin config_digital_out mit Pin-NAME, value 0, KEIN
+    # on_restart-/update-Befehl in der Config (sonst Zwangspegel bei jedem
+    # Host-Neustart, Befund 15.11.2026).
+    ro = printer.main_mcu.raw_out
+    assert sorted(e["pin"] for e in ro.values()) == sorted(
+        ["PB9", "PB10", "PB7", "PB8", "PB5", "PB6", "PA1", "PB15"]), ro
+    assert all(e["phys"] == 0 for e in ro.values()), ro
+    assert not [c for c in printer.main_mcu.config_cmds
+                if "update_digital_out" in c], printer.main_mcu.config_cmds
     # Query-Lookup erst NACH connect (optional, hier vorhanden).
     gpio.handle_connect()
     assert gpio._query_available is True, "query sollte verfügbar sein"
@@ -1121,35 +1171,56 @@ def test_review_config_vor_connect():
 
 
 def test_review_print_time():
-    """REVIEW 2: set_digital braucht print_time > 0 (0 wird abgelehnt)."""
+    """Umbau 15.11.2026: Rohpins werden sofort per update_digital_out gesetzt
+    (vorher Queue leeren); REVIEW 2 (print_time > 0) gilt weiter für den
+    Registry-Pin (Enable)."""
     printer = FakePrinter()
     cfg = K.parse_options(test_options())
     gpio = K.KlippyGpio(printer, "mcu",
                         pin_specs=_strapping_specs_for_test(cfg))
+    # vor dem Connect: kein Setzbefehl -> klarer Fehler statt stillem Nichts
+    try:
+        gpio.set_pin("PB9", 1)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("set_pin vor handle_connect NICHT abgelehnt")
     printer.fire_connect()
     gpio.handle_connect()
-    # Sauberer Weg (Variante a): toolhead-Zeit + sync (M400-Äquivalent).
-    gpio.set_pin("PB9", 0)
-    pin = printer.pp.pins["PB9"]
-    assert pin.last_print_time is not None and pin.last_print_time > 0, (
-        "print_time %r" % (pin.last_print_time,))
-    assert pin.logical == 0 and pin.phys == 0, (pin.logical, pin.phys)
-    assert printer.toolhead.wait_moves_calls == 0
-    gpio.sync()
-    assert printer.toolhead.wait_moves_calls == 1, "sync() muss wait_moves rufen"
-    # Alter Bug (print_time=0) wird vom Fake wie von Klipper abgelehnt:
+    mcu = printer.main_mcu
+    n0 = printer.toolhead.wait_moves_calls
+    gpio.set_pin("PB9", 1)
+    assert mcu.raw_calls[-1] == ("PB9", 1), mcu.raw_calls
+    assert printer.toolhead.wait_moves_calls == n0 + 1, "Queue vor dem Setzen leeren"
+    # Invertierter Pin: logisch 0 -> phys 1 (wie Y-DIR !PB7), logisch 1 -> 0
+    gpio.set_pin("!PB7", 0)
+    assert mcu.raw_calls[-1] == ("PB7", 1), mcu.raw_calls
+    gpio.set_pin("!PB7", 1)
+    assert mcu.raw_calls[-1] == ("PB7", 0), mcu.raw_calls
+    # MCU ohne update_digital_out -> Fehler beim Setzen, kein Absturz im Connect
+    p2 = FakePrinter()
+    p2.main_mcu.supports_update = False
+    g2 = K.KlippyGpio(p2, "mcu", pin_specs=["PB9"])
+    p2.fire_connect()
+    g2.handle_connect()
+    try:
+        g2.set_pin("PB9", 1)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("fehlender update_digital_out nicht gemeldet")
+    # Registry-Pin (Enable): weiter set_digital mit print_time > 0
+    gpio.set_pin(K.ENABLE_PIN_RAW, 0)
+    pin = printer.pp.pins[K.ENABLE_PIN_RAW]
+    assert pin.last_print_time is not None and pin.last_print_time > 0
     try:
         pin.set_digital(0, 1)
     except RuntimeError:
         pass
     else:
         raise AssertionError("set_digital(0, …) NICHT abgelehnt!")
-    # Invertierter Pin: logisch 0 -> phys 1 (wie Y-DIR !PB7).
-    gpio.set_pin("!PB7", 0)
-    pin7 = printer.pp.pins["!PB7"]
-    assert pin7.last_print_time > 0 and pin7.phys == 1, pin7.phys
-    return "print_time %.1f ok, wait_moves %d, set_digital(0) abgelehnt, !PB7 phys 1" % (
-        pin.last_print_time, printer.toolhead.wait_moves_calls)
+    return ("Rohpin sofort (PB9=1, !PB7 0->phys 1), wait_moves davor, ohne "
+            "Befehl Fehler; Enable print_time %.1f" % pin.last_print_time)
 
 
 def test_review_query():
@@ -1264,8 +1335,10 @@ def test_huelle_upstream():
     assert printer.loaded == ["k2_485", "buttons"], "load_object(k2_485/buttons): %r" % printer.loaded
     assert obj._bus is bus
     md = sorted(set(p.max_duration for p in printer.pp.pins.values()))
-    assert len(printer.pp.pins) == 9 and md == [0.0], (len(printer.pp.pins), md)
+    assert len(printer.pp.pins) == 1 and md == [0.0], (len(printer.pp.pins), md)
+    assert len(obj._gpio._raw) == 8, obj._gpio._raw   # Dir/Step = Rohpins
     printer.fire_connect()  # ruft Config-Callbacks OHNE Argument
+    assert len(printer.main_mcu.raw_out) == 8, printer.main_mcu.raw_out
     assert printer.nozzle_mcu.config_cmds == ["config_transparent oid=1"], \
         printer.nozzle_mcu.config_cmds
     tr = obj._ensure_transports()
@@ -1279,7 +1352,7 @@ def test_huelle_upstream():
     p2 = FakePrinter(bus=bus)
     o2 = K.load_config(FakeKConfig(p2, _huelle_opts("mcu nozzle_mcu")))
     assert o2.nozzle_mcu is p2.nozzle_mcu
-    return "KTWO_MOTOR_INIT/STATUS, pins, 9 Pins max_duration 0, cb(), Bus k2_485 (%d Frames)" % (
+    return "KTWO_MOTOR_INIT/STATUS, pins, 8 Rohpins + Enable max_duration 0, cb(), Bus k2_485 (%d Frames)" % (
         len(bus.calls),)
 
 
@@ -3389,6 +3462,18 @@ def test_e_strapping_und_pegel_zurueck():
     q = gpio._queries.get("nozzle_mcu")
     assert q is not None and q.mcu is printer.nozzle_mcu, q
     assert gpio.query_pin(E_DIR) in (0, 1)
+    #    Host-Neustart nachgestellt: der Stepper hat E-DIR physisch 1
+    #    hinterlassen – nichts in der Config zwingt den Pegel um, Rücklesung
+    #    liefert 1, Strapping setzt 0, Zurückstellen wieder 1
+    noz = printer.nozzle_mcu
+    assert not [c for c in noz.config_cmds if "update_digital_out" in c]
+    ent = [e for e in noz.raw_out.values() if e["pin"] == "PB4"][0]
+    ent["phys"] = 1
+    assert gpio.query_pin(E_DIR) == 1
+    gpio.set_pin(E_DIR, 1)            # logisch 1 bei "!" = phys 0
+    assert gpio.query_pin(E_DIR) == 0 and noz.raw_calls[-1] == ("PB4", 0)
+    gpio.set_pin(E_DIR, 0)            # zurück: phys 1
+    assert gpio.query_pin(E_DIR) == 1 and noz.raw_calls[-1] == ("PB4", 1)
     #    Düsen-MCU ohne query_gpio_status -> None (Controller lässt E aus)
     printer = FakePrinter()
     gpio = K.KlippyGpio(printer, "mcu", pin_specs=["PB9", E_DIR],
