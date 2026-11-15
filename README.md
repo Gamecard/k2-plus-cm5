@@ -47,8 +47,85 @@ sauberer Einbau.
 
 - ein offenes, aktuelles Klipper statt eines festen Hersteller-Stands – eigene Makros, eigene Module, Mainsail,
   Kameras nach Wahl;
-- Erweiterungen, die mit der Original-Software nicht möglich sind, z. B. CAN für einen späteren Toolhead;
+- Erweiterungen, die mit der Original-Software nicht möglich sind, z. B. CAN für einen späteren Toolhead
+  (siehe nächster Abschnitt);
 - eine offene, nachbaubare Lösung für andere Besitzer eines K2 Plus.
+
+### Ziel: Druckkopf über CAN-Bus anbinden – weniger Kabel, weniger Verbindungsprobleme
+
+**Stand: Ziel, noch nicht begonnen.** Die Trägerplatine hat den CAN-Anschluss dafür schon (J9b, siehe
+[Platinen-README](hardware/k2-pi-cm5-traeger/README.md), Abschnitt „Toolhead-Versorgung“). Es fehlt die
+Druckkopf-Seite.
+
+**Heute:** Der Druckkopf hängt an einem **14-poligen Kabel** (Stecker 2×7) vom Bridge-Board. Laut Aufdruck auf dem
+Bridge-Board laufen darin:
+
+| Leitungen | Zweck |
+|---|---|
+| 3 × 24 V, 3 × GND | Stromversorgung des Druckkopfs (Heizung, Lüfter, Elektronik) |
+| RX1 / TX1 | serielle Verbindung (RS232) zur Düsen-Platine, über die Klipper Heizung, Lüfter und Sensoren steuert |
+| SYNC (+ GND) | Auslösesignal der Kraftsensor-Antastung (PrTouch) zum Mainboard |
+| VBUS2, D2+, D2− (+ GND) | ein USB-Anschluss (Zweck im Druckkopf noch nicht geklärt) |
+
+Jede dieser Adern und jeder Kontakt im Stecker bewegt sich bei jedem Druck mit dem Kopf hin und her. Ein
+Wackelkontakt oder eine gebrochene Ader reicht, damit die Verbindung abreißt. In Klipper sieht das z. B. so aus:
+
+```
+Lost communication with MCU 'nozzle_mcu'
+```
+
+Der Druck bricht dann ab.
+
+**Ziel:** Der Druckkopf bekommt eine Platine mit **Klipper-Firmware am CAN-Bus**. Zum Kopf führen dann nur noch
+**4 Adern** statt 14:
+
+| Ader | Zweck |
+|---|---|
+| 24 V | Stromversorgung – direkt vom Drucker-Netzteil, mit eigener Kabelsicherung ≈ 5 A |
+| GND | Masse |
+| CAN-H | CAN-Datenleitung „hoch“ |
+| CAN-L | CAN-Datenleitung „tief“ |
+
+Heizung, Temperaturfühler, Lüfter, Kraftsensor und Beschleunigungssensor hängen dann direkt an dieser
+Druckkopf-Platine. Klipper auf dem CM5 spricht mit ihr über den CAN-Anschluss der Trägerplatine.
+
+**Begriffe erklärt:**
+
+- **CAN-Bus** (Controller Area Network): ein Datenbus, der ursprünglich für Autos entwickelt wurde – also für
+  Umgebungen mit Bewegung, Vibration und elektrischen Störungen. Die Daten laufen über **zwei verdrillte Adern**
+  (CAN-H und CAN-L). Der Empfänger wertet nur den **Unterschied** zwischen beiden aus. Eine Störung, die beide Adern
+  gleich trifft (z. B. vom Motor oder Heizbett), hebt sich dadurch auf. Bei RS232 dagegen wird jede Ader einzeln
+  gegen Masse gemessen – eine Störung auf der Ader verfälscht das Signal direkt.
+- **Fehlerprüfung im Bus:** Jede CAN-Nachricht trägt eine Prüfsumme. Ist eine Nachricht gestört, erkennt das schon
+  der CAN-Baustein selbst und sendet sie automatisch noch einmal. Klipper prüft seine Nachrichten zusätzlich selbst
+  (das tut es auch heute bei RS232).
+- **Abschlusswiderstand:** An beiden Enden des CAN-Kabels sitzt je ein Widerstand mit 120 Ω. Er verhindert, dass
+  Signale am Kabelende zurückgeworfen werden. Auf der Trägerplatine ist das die Steckbrücke `JP_CAN_TERM`, auf der
+  Druckkopf-Platine meist ebenfalls eine Steckbrücke oder ein Schalter.
+- **Druckkopf-Platine mit Klipper-Firmware** (englisch „CAN toolhead board“): eine kleine Platine mit eigenem
+  Mikrocontroller direkt am Kopf. Klipper behandelt sie wie eine weitere MCU – genau wie heute `nozzle_mcu`, nur
+  über CAN statt über RS232. Solche Platinen sind bei Klipper-Druckern verbreitet.
+
+**Was das bringt:**
+
+- **Weniger Fehlerquellen:** 4 statt 14 Adern und Kontakte in der bewegten Kabelkette.
+- **Robustere Verbindung:** Störungen fängt der CAN-Bus selbst ab, statt dass die Verbindung zur Düsen-MCU
+  abreißt.
+- **Einfacheres Kabel:** Ein 4-adriges Kabel lässt sich leicht selbst konfektionieren und tauschen. Für das
+  Original-Kabel braucht man das passende Ersatzteil.
+- **Upstream-Klipper bis in den Kopf:** Auch am Druckkopf läuft dann offene Klipper-Firmware statt der festen
+  Creality-Firmware der Düsen-Platine.
+
+**Offene Punkte, bevor das umgesetzt werden kann:**
+
+- Welche Druckkopf-Platine passt mechanisch in den K2-Plus-Kopf, und welche Anschlüsse braucht sie (Heizung,
+  Thermistor, Lüfter, Kraftsensor PrTouch, Beschleunigungssensor)?
+- **Kraftsensor-Antastung:** Heute meldet die Düsen-Platine das Auslösen über die eigene SYNC-Leitung an das
+  Mainboard. Mit CAN muss dieses Signal über den Bus laufen. Klipper kann das grundsätzlich (Antasten über mehrere
+  MCUs), es muss für den K2 Plus aber neu umgesetzt und geprüft werden.
+- **USB-Leitung im Original-Kabel:** Wofür sie im Druckkopf genutzt wird, ist noch offen. Wird sie gebraucht, muss
+  sie getrennt geführt werden, denn CAN überträgt kein USB.
+- 24-V-Zuleitung mit eigener Sicherung vom Netzteil zum Kopf (siehe Platinen-README, „Toolhead-Versorgung“).
 
 **Ausblick (Idee, nicht begonnen):** eine Version 3 der Platine, die zusätzlich das Bridge-Board ersetzt – eine
 eigene Platine statt T113, Bridge-Board und Adapter.
