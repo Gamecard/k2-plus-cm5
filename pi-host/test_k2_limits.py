@@ -966,7 +966,8 @@ def test_makros():
     p_vor["heater_bed"] = {"target": 0.0, "temperature": 25.0}
     p_vor["k2_chamber"] = {"fault": False}
     p_vor["gcode_macro _PI_CHAMBER_MAX"] = {"fallback": 60}
-    p_vor["gcode_macro _PI_MESH_STATUS"] = {"druck_mesh": 0, "kammer_warten": 0}
+    p_vor["gcode_macro _PI_MESH_STATUS"] = {"druck_mesh": 0, "kammer_warten": 0,
+                                            "kammer_start_min": 30}
     lines, msgs = TB._render(env, macros, "M191", p_vor, {"S": "50"})
     check("M191 S50 vor START_PRINT: kein sofortiges Warten, kammer_warten=50",
           "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=kammer_warten VALUE=50" in lines
@@ -974,10 +975,11 @@ def test_makros():
           and any("START_PRINT" in m for m in msgs), (lines, msgs))
     p_vor["gcode_macro _PI_MESH_STATUS"]["kammer_warten"] = 50
     lines_w, msgs_w = TB._render(env, macros, "_PI_KAMMER_WARTEN", p_vor, {})
-    check("_PI_KAMMER_WARTEN: wartet mit P2-Lüfter auf MINIMUM=49 und setzt zurück",
+    check("_PI_KAMMER_WARTEN: wartet ab 30 °C (MINIMUM=30), heizt weiter auf 50 °C",
           "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=kammer_warten VALUE=0" in lines_w
+          and "SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=50" in lines_w
           and "M106 P2 S255" in lines_w
-          and "KTWO_CHAMBER_WAIT MINIMUM=49" in lines_w
+          and "KTWO_CHAMBER_WAIT MINIMUM=30" in lines_w
           and "M106 P2 S0" in lines_w, (lines_w, msgs_w))
 
 

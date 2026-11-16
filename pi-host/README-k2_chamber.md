@@ -60,6 +60,15 @@ beim Start, dass der Lüfter-Abschnitt `heater: chamber_heater` hat und einen Ta
 - `M191` wartet über `KTWO_CHAMBER_WAIT MINIMUM=…` statt `TEMPERATURE_WAIT` – bricht
   bei Lüfterfehler, Ziel 0 oder Shutdown mit Fehler ab (sonst würde M191 nach der
   Abschaltung endlos warten).
+- **`M191` vor `START_PRINT` (15./16.11.2026, `macros.cfg`):** OrcaSlicer schreibt bei
+  ASA/ABS `M191 S50` vor `START_PRINT` in die Druckdatei, während das Heizbett noch aus
+  ist (`target = 0`). Ohne das heiße Bett schafft die PTC-Heizung allein kaum 50 °C und
+  Bett/Düse bleiben kalt. Wird `M191 S>40` im Druck vor `START_PRINT` aufgerufen
+  (`_PI_MESH_STATUS.druck_mesh == 0`, ohne `WAIT=1`), schaltet `M191` die Kammerheizung
+  auf `S` ein, merkt `kammer_warten = S` vor und läuft sofort weiter zu `START_PRINT`.
+  Nach dem Bett-Aufheizen (`M190`) wartet `_PI_KAMMER_WARTEN` (mit Seitenlüfter `P2` zur
+  Luftumwälzung) nur bis `kammer_start_min` (**30 °C**), danach startet der Druck sofort
+  und die Kammerheizung heizt während des Drucks weiter bis zum Sollwert `S` (z. B. 50 °C).
 
 ## 3. Optionen (`[k2_chamber]`)
 

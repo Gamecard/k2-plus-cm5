@@ -112,6 +112,18 @@ weil `k2-module.cfg` vor `macros.cfg` geladen wird (prüfbar: `/printer/gcode/he
 Makro-Beschreibung). Ein übersprungener Aufruf verstellt die Bezugstemperatur daher nicht. Fehlen Objekte und
 `PRINT_MIN`/`PRINT_MAX`, misst er wie früher das ganze Bett – nie schlechter als vorher.
 
+### Kammertemperatur beim Druckstart – `M191` vor `START_PRINT` (15./16.11.2026)
+
+**Hintergrund (warum geändert):**
+1. **OrcaSlicer schreibt `M191 S50` vor `START_PRINT`:** Bei ASA/ABS (`chamber_temperature = 50`, `activate_chamber_temp_control = 1`) setzt OrcaSlicer `M106 P2 S255` + `M191 S50` + `M106 P2 S0` an den Dateianfang *vor* den Drucker-Startcode (`START_PRINT EXTRUDER_TEMP=260 BED_TEMP=90`). Dadurch wartete `M191 S50` bisher bei **ausgeschaltetem Heizbett** (`target = 0`) und kalter Düse. Ohne das 90–100 °C heiße Bett (800–1000 W Hauptwärmequelle im Bauraum; die kalte Alu-Platte entzieht der Luft sogar Wärme) schafft die PTC-Kammerheizung allein die 50 °C kaum (stieg in 25 min nur auf ~46 °C), während Bett und Düse komplett kalt blieben.
+2. **Kein langes Blockieren bis 49 °C vor Druckbeginn:** Selbst mit 90 °C heißem Bett dauert das Aufheizen des großen Bauraums von Raumtemperatur bis 49 °C mehrere Minuten, obwohl ab **30 °C** Kammertemperatur und durchgeheiztem Bett bereits verzugsfrei gestartet werden kann, solange die Kammerheizung während des Drucks weiter bis zum Sollwert (z. B. 50 °C) durchheizt.
+
+**Ablauf im Drucker (ohne Slicer-Änderung):**
+1. Wird `M191 S>40` im laufenden Druck **vor `START_PRINT`** aufgerufen (`_PI_MESH_STATUS.druck_mesh == 0`, ohne `WAIT=1`), blockiert `M191` dort nicht mehr: Es schaltet die Kammerheizung auf `S` ein, speichert `kammer_warten = S` in `_PI_MESH_STATUS` und läuft sofort weiter zu `START_PRINT`.
+2. `START_PRINT` schaltet sofort Bett (`M140 S{BED_TEMP}`) und Düse (`M104 S140`) ein, fährt `G28` und heizt das Bett mit `M190 S{BED_TEMP}` voll auf (dabei greift automatisch der Bett-Vorrang aus `[k2_chamber]`).
+3. Direkt nach `M190`/`M109` ruft `START_PRINT` das Hilfsmakro `_PI_KAMMER_WARTEN` auf: Es wartet mit eingeschaltetem Seitenlüfter (`M106 P2 S255` zur Wärmeverteilung über dem heißen Bett) nur bis zur Startschwelle **`kammer_start_min` (Standard 30 °C)** (`KTWO_CHAMBER_WAIT MINIMUM=30`). Sobald die Kammer ≥ 30 °C hat, läuft `START_PRINT` (Reinigung, Z-Tilt, `G28 Z`, Bett-Mesh, Druck) sofort weiter, während `chamber_heater` mit `TARGET={S}` (z. B. 50 °C) **während des gesamten Drucks weiter bis zur Wunschtemperatur heizt**.
+4. `END_PRINT` und `_PI_RESET_STATE` setzen `kammer_warten = 0` zurück. Außerhalb eines Drucks oder mit `M191 S50 WAIT=1` wartet `M191` wie bisher auf `S - 1`.
+
 **Weggelassen (Grund):**
 
 | Stock-Makro | Grund |
