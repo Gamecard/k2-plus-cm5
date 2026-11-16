@@ -639,11 +639,13 @@ stecken; in den folgenden Schritten bedeutet dann „Labornetzteil-Ausgang AN/AU
 | Messmasse | Multimeter COM (Mini-Greifer) | JP_BOOT rechter Stift |
 | J1, J9b, J10, J11 | – | **frei** |
 
-   Displaykabel an J12 (nur stromlos stecken): Klappbügel öffnen, das 22-pol. Ende mit den **blanken Kontakten nach
-   unten** (zur Platine; J12 = Hirose FH12 mit unten liegenden Kontakten) bis zum Anschlag einschieben, Bügel schließen.
-   Am Display das 15-pol. Ende nach der Waveshare-Anleitung stecken. Die Kontaktseite ist am Muster noch nicht
-   bestätigt (offener Punkt 4 der README). Steckt das Kabel mit der falschen Seite, berühren die Kontakte nur die
-   Isolierung – es passiert nichts, es gibt nur kein Bild. Dann stromlos umdrehen und erneut versuchen.
+   **Achtung – das Displaykabel nicht direkt in J12 stecken.** J12 ist auf Alpha 1 gespiegelt belegt (README,
+   Abschnitt „DSI-Display“): Ein direkt gestecktes Displaykabel für den Raspberry Pi 5 schließt die 3,3 V des Trägers
+   gegen Masse kurz. Das Display nur über das dort beschriebene Zwischenstück anschließen (J12 → FFC Typ B →
+   Verlängerungsplatine → Displaykabel → Display; noch nicht erprobt). Nur stromlos stecken. An J12: Klappbügel öffnen,
+   das Kabelende mit den **blanken Kontakten nach unten** (zur Platine; J12 = Hirose FH12 mit unten liegenden
+   Kontakten) bis zum Anschlag einschieben, Bügel schließen. Am Display das 15-pol. Ende nach der Waveshare-Anleitung
+   stecken.
 
 Einschalten:
 
@@ -788,9 +790,10 @@ verkabelt. Träger mit CM5 und Kühlkörper nach Etappe 9, ohne Kabel, Messlitze
 6. Flachkabel in **J1**: Klappbügel von J1 etwa 90° hochklappen, das freie Kabelende in **der Lage**, bei der in Etappe 7
    D10 geleuchtet hat (Foto/Markierung), gerade bis zum Anschlag einschieben, Bügel schließen. Kabel nicht verdrehen.
 7. Kappe/Klebeband von der XT30-Buchse nehmen, Buchse in **J7** stecken (Stecköffnung links an Kante A).
-8. Optional Display: Klappbügel von **J12** öffnen, das 22-pol. Ende des Displaykabels mit den blanken Kontakten nach
-   unten (zur Platine) bis zum Anschlag einschieben, Bügel schließen; das 15-pol. Ende am Display nach der
-   Waveshare-Anleitung. Display und Kabel mechanisch sichern (nicht knicken, nicht über scharfe Kanten).
+8. Optional Display: **nicht direkt an J12 stecken** (J12 ist gespiegelt belegt, README Abschnitt „DSI-Display“),
+   sondern nur über das dort beschriebene Zwischenstück (FFC Typ B + Verlängerungsplatine). An J12 den Klappbügel
+   öffnen, das Kabelende mit den blanken Kontakten nach unten (zur Platine) bis zum Anschlag einschieben, Bügel
+   schließen; das 15-pol. Ende am Display nach der Waveshare-Anleitung. Display und Kabel mechanisch sichern (nicht knicken, nicht über scharfe Kanten).
 9. J9b, J10, J11 bleiben frei. Werden J9b/J11 später gesteckt: Der gesteckte Stecker mit Kabelbogen ragt ≈ 13,6 mm über
    die Auflage – nur stecken, wo darüber Platz ist.
 

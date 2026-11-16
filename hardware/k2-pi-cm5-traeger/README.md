@@ -4,8 +4,13 @@
 > Lizenz und Haftungsausschluss: siehe [`../LIZENZ-UND-HAFTUNG.md`](../LIZENZ-UND-HAFTUNG.md).
 
 > **Status (11.11.2026): Alpha 1 – gefertigt (JLC), seit 09.11.2026 an einem Drucker in Betrieb.** Layout
-> DRC/ERC 0 Fehler. Am Gerät geprüft: Versorgung aus den 24 V des Druckers, beide MCUs über das Original-Flachkabel, RS485 über den Treiber der Platine (Motor-Init aller fünf Motoren, CFS-Box), Strommessung (INA226 24 V und 5 V), CAN-Controller erkannt, Stromausfall-Erkennung, beide Kamera-USB, erste Drucke mit CFS-Wechsel. **Offen:** DSI-Display (Hintergrundlicht/Touch antworten nicht, Ursache offen), Ethernet, CAN mit angeschlossenem Teilnehmer, CM5-Temperatur unter Dauerlast (passiver Kühler, bisher 63–66 °C, keine Drosselung).
+> DRC/ERC 0 Fehler. Am Gerät geprüft: Versorgung aus den 24 V des Druckers, beide MCUs über das Original-Flachkabel, RS485 über den Treiber der Platine (Motor-Init aller fünf Motoren, CFS-Box), Strommessung (INA226 24 V und 5 V), CAN-Controller erkannt, Stromausfall-Erkennung, beide Kamera-USB, erste Drucke mit CFS-Wechsel. **Fehler:** Der Display-Stecker J12 ist gespiegelt belegt (siehe Warnung unten). **Offen:** Ethernet, CAN mit angeschlossenem Teilnehmer, CM5-Temperatur unter Dauerlast (passiver Kühler, bisher 63–66 °C, keine Drosselung).
 > Weitere Punkte: [Offene Punkte](#offene-punkte) am Ende.
+
+> **WARNUNG (16.11.2026): Der Display-Stecker J12 ist auf Alpha 1 gespiegelt belegt.** Ein Displaykabel für den
+> Raspberry Pi 5 (22 → 15-polig, z. B. das Kabel des Waveshare-Displays) **nicht direkt in J12 stecken**: Die 3,3 V des
+> Trägers treffen dann auf die Masse des Displays (Kurzschluss), und das Display bleibt dunkel. Ursache und Abhilfe:
+> Abschnitt [DSI-Display](#dsi-display-nachtrag-23).
 
 > **Unterlagen:** [Fertigungshinweise](#fertigungshinweise-leiterplatte-und-bestückung) · [`EINKAUFSLISTE.md`](EINKAUFSLISTE.md) (alles außer JLC) · [`AUFBAU-UND-INBETRIEBNAHME.md`](AUFBAU-UND-INBETRIEBNAHME.md)
 > (Messungen in 12 Etappen) · [`KOMPROMISSE-UND-OFFENE-PUNKTE.md`](KOMPROMISSE-UND-OFFENE-PUNKTE.md) · Software:
@@ -57,10 +62,41 @@ vom Bridge-Board steckt in **J1** (Lage wie CON2 der T113). Der Träger versorgt
   Für Pi 5/CM5 ist **Rev 2.2** des Displays nötig (Tabelle „Entscheidungen“ in `KONZEPT.md`).
 - Stecker **J12 an Kante C**, senkrecht entlang der Kante zwischen den Bohrungen L2 und L4, Öffnung zur Kante, Kabel geht
   nach außen ab – dort, wo an der T113 der Display-Stecker **CON1** sitzt (am 23.10.2026 bestätigt).
-- Kontaktseite und Pin 1 wie Raspberry Pi 5 bzw. CM-IO-Board: Es ist **derselbe Stecker (Hirose FH12-22S-0.5SH)** wie auf dem
-  CM4-IO-Board (KiCad-Designdaten von Raspberry Pi), Pin 1 liegt am südlichen Ende (Richtung L4). Ein Pi-5-Displaykabel passt
-  ohne Verdrehen.
-- Belegung (wie Pi 5 / CM-IO, 22-pol.):
+- **Fehler auf Alpha 1: J12 ist gespiegelt belegt (festgestellt 16.11.2026).** J12 ist dieselbe Buchse wie auf dem
+  CM4-IO-Board (Hirose FH12-22S-0.5SH, Kontakte unten). Raspberry Pi nummeriert die Pads dieser Buchse in seiner eigenen
+  Bauteilbibliothek (`CM4IO.pretty` in den KiCad-Designdaten des CM4-IO-Boards) aber **andersherum** als die
+  KiCad-Standardbibliothek. Der Träger verwendet das Standard-Bauteil mit der Belegung des Pi. Dadurch liegen alle
+  22 Kontakte in umgekehrter Reihenfolge: Die 3,3 V sitzen am anderen Ende der Buchse als beim CM4-IO-Board
+  (Träger: Pad bei x = +5,25 mm im Bauteil, CM4-IO: Pad bei x = −5,25 mm). Pin 1 von J12 liegt am südlichen Ende
+  (Richtung L4).
+
+  Steckt man ein Displaykabel für den Raspberry Pi 5 direkt in J12, trifft Kontakt n von J12 auf Leitung 23 − n des
+  Kabels:
+
+  | Kontakt von J12 | Signal auf dem Träger | trifft im Kabel auf | Folge |
+  |---|---|---|---|
+  | 22 | 3,3 V (Wandler U14) | Leitung 1 = GND | **Kurzschluss der Display-3,3 V**, U14 läuft in die Strombegrenzung |
+  | 21 / 20 | SDA / SCL | Leitung 2 / 3 = Datenleitung D0 | beide I2C-Leitungen liegen auf Masse |
+  | 1 | GND | Leitung 22 = 3,3-V-Eingang des Displays | das Display bekommt keine Versorgung |
+
+  So sah es am Muster aus: kein Bild, kein Hintergrundlicht, kein Touch; im Kernel-Log `SDA stuck at low`,
+  `failed to enable backlight: -110` und `touchscreen probe failed`; `pinctrl get 0-1` zeigt beide Leitungen `lo`;
+  der 5-V-Strom springt um bis zu +1,2 A. Ohne Display arbeitet der Träger normal.
+
+  **Deshalb: kein Displaykabel für den Raspberry Pi 5 direkt in J12 stecken.**
+
+  Abhilfe an Alpha 1 (**noch nicht erprobt**): ein Zwischenstück aus zwei Standardteilen, das die Reihenfolge einmal
+  umdreht.
+  - ein kurzes 22-poliges Flachkabel (FFC, Raster 0,5 mm) vom **Typ B** – bei Typ B liegen die blanken Kontakte an den
+    beiden Enden auf entgegengesetzten Seiten, bei Typ A auf derselben Seite,
+  - eine FFC-Verlängerungsplatine (22-polig, Raster 0,5 mm, zwei Buchsen, gerade durchverbunden).
+
+  Reihenfolge: **J12 → FFC Typ B → Verlängerungsplatine → Displaykabel → Display.** Die Unterseite der
+  Verlängerungsplatine isolieren (blanke Lötstellen). Nur stromlos stecken. Nach dem ersten Einschalten sofort prüfen:
+  `pinctrl get 0-1` muss `hi` zeigen, `sudo i2cdetect -y 0` muss das Display finden. Sonst ausschalten und abziehen.
+  Ein fertiges Displaykabel 22 → 15-polig mit umgekehrter Belegung ist nicht bekannt.
+- Belegung von J12 (Nummern = Pad-Nummern des KiCad-Standard-Bauteils; gegenüber der Buchse des Pi 5 bzw. CM-IO-Boards
+  in umgekehrter Reihenfolge, siehe oben):
 
 | Pin | Signal | CM5-Pin | Pin | Signal | CM5-Pin |
 |---|---|---|---|---|---|
@@ -402,8 +438,9 @@ zugeordnet. Begründungen und Quellen ausführlich: [`KOMPROMISSE-UND-OFFENE-PUN
    und J11 gegen die Gegenkabel prüfen. **Achtung:** Bei der stehenden GH-Variante liegt Pin 1 räumlich auf der
    anderen Seite als bei der liegenden (Siebdruck „H L G“ an J9b bzw. „G B A“ an J11 gibt die Reihenfolge von links
    nach rechts an).
-2. **DSI:** Kontaktseite/Pin 1 mit dem Pi-5-Displaykabel kontrollieren (gleicher Stecker wie CM4-IO, also erwartet
-   passend); `dtoverlay=vc4-kms-dsi-7inch` am CM5 testen (I2C ID_SD/ID_SC); D2/D3 nicht verlegt. Die Lage von CON1 an der
+2. **DSI:** J12 ist gespiegelt belegt (Abschnitt „DSI-Display“) – das Display nur über das dort beschriebene
+   Zwischenstück anschließen; Test mit Zwischenstück steht aus. `dtoverlay=vc4-kms-dsi-7inch` am CM5 testen
+   (I2C ID_SD/ID_SC); D2/D3 nicht verlegt. Die Lage von CON1 an der
    T113 ist nicht vermessen – J12 sitzt mittig an Kante C (y 22,1–39,2); bei Bedarf Kabellänge prüfen.
 3. **CM5-Montage:** Abstandshalter Ø ≤ 4,5 mm, Schrauben mit flachem Kopf (≤ 5,5 mm Ø unten), Kühlkörper inkl.
    Wärmeleitpad ≤ 4,96 mm hoch.
@@ -471,3 +508,8 @@ zugeordnet. Begründungen und Quellen ausführlich: [`KOMPROMISSE-UND-OFFENE-PUN
    Takt hat ein eigenes Paar zusätzlich. Je mehr Lanes, desto mehr Bilddaten pro Sekunde – also höhere Auflösung oder
    Bildrate. Welche Lane-Zahl ein Display braucht, steht in seinem Datenblatt bzw. in der Treiber-Einstellung
    (`dtoverlay`). Ein Display für 2 Lanes läuft auch an einem Anschluss mit 4 Lanes, umgekehrt nicht.
+5. **Display-Stecker J12 richtig herum belegen** (Nachtrag 16.11.2026). Auf Alpha 1 ist J12 gespiegelt belegt (Abschnitt
+   „DSI-Display“). Alpha 2: die Pad-Reihenfolge an die Buchse des CM4-IO-Boards anpassen – entweder das Bauteil aus
+   `CM4IO.pretty` der Raspberry-Pi-Designdaten verwenden oder die Netze spiegeln (1 ↔ 22, 2 ↔ 21 …). Danach die
+   **Lage** jedes Pads gegen `CM4IOv5.kicad_pcb` prüfen, nicht nur die Pad-Nummer, und vor der Bestellung mit einem
+   echten Displaykabel gegenprüfen. Das gilt für jeden Stecker, an den ein fertiges Fremdkabel kommt.
