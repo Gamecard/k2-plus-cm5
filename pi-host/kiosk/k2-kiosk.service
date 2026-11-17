@@ -1,0 +1,30 @@
+# Mainsail-Kiosk auf dem DSI-Display (cage + Chromium)
+# Adresse: Drop-in mit Environment=K2_KIOSK_URL=... (Standard http://localhost/)
+# Aus: sudo systemctl disable --now k2-kiosk && sudo systemctl enable --now getty@tty1
+[Unit]
+Description=K2 Mainsail-Kiosk auf dem DSI-Display
+After=systemd-user-sessions.service nginx.service moonraker.service
+Wants=nginx.service
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+User=pi
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+Environment=XDG_SESSION_TYPE=wayland
+ExecStart=/usr/bin/cage -d -s -- /home/pi/k2-kiosk/kiosk-start.sh
+Restart=always
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

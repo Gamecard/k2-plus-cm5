@@ -1,0 +1,15 @@
+# DSI-Display nach 10 min ohne Berührung dunkel, Aufwecken per Touch
+# Ruhezeit ändern: Environment=K2_DISPLAY_RUHE_S=<Sekunden>
+# Aus: sudo systemctl disable --now k2-display-ruhe
+[Unit]
+Description=K2 Display-Ruhe (Hintergrundlicht aus nach Ruhezeit, Touch weckt)
+After=k2-kiosk.service
+
+[Service]
+Environment=K2_DISPLAY_RUHE_S=600
+ExecStart=/usr/bin/python3 /home/pi/k2-kiosk/display-ruhe.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

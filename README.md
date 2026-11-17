@@ -195,6 +195,7 @@ eine eigene Leak-Muster-Liste für `pack.sh`).
 | [`pi-host/config-pi/`](pi-host/config-pi/README.md) | Klipper-Konfiguration des K2 Plus (`printer.cfg`, Makros, Module, Homing, Z-Ausrichtung) mit Bedienhinweisen |
 | [`pi-host/install/`](pi-host/install/README.md) | `pack.sh` (Paket bauen), `install.sh`/`uninstall.sh`, `k2-identify.py`, `k2-bootstart.py`, Start-Wächter, Creality-Brücke, Web-Anpassungen, Tests |
 | [`pi-host/traeger-alpha1/`](pi-host/traeger-alpha1/README-traeger-alpha1.md) | Softwarepaket für die Trägerplatine (am Träger in Betrieb) |
+| [`pi-host/kiosk/`](pi-host/kiosk/LIESMICH.md) | Mainsail im Vollbild auf dem DSI-Display (cage + Chromium), Display nach 10 min ohne Berührung dunkel, Aufwecken per Touch |
 | `nachbau/` | Python-Nachbau der Creality-Protokolle (RS485-Bus, CFS-Box, Motoren, Adressvergabe, Bootstart, Spülen, Materialdatenbank); `ref-hi/` = Testvektoren |
 | [`hardware/k2-pi-cm5-traeger/`](hardware/k2-pi-cm5-traeger/README.md) | Trägerplatine Alpha 1: Generator, KiCad-Projekt, Fertigungsdaten in `ausgabe/`, Bestell- und Aufbauanleitung |
 | [`hardware/LIZENZ-UND-HAFTUNG.md`](hardware/LIZENZ-UND-HAFTUNG.md) | Lizenz (CC BY-NC-SA 4.0) und Haftungsausschluss der Hardware |

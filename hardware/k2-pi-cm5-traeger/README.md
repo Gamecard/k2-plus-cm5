@@ -85,7 +85,7 @@ vom Bridge-Board steckt in **J1** (Lage wie CON2 der T113). Der Träger versorgt
 
   **Deshalb: kein Displaykabel für den Raspberry Pi 5 direkt in J12 stecken.**
 
-  Abhilfe an Alpha 1 (**noch nicht erprobt**): ein Zwischenstück aus zwei Standardteilen, das die Reihenfolge einmal
+  Abhilfe an Alpha 1 (**am 17.11.2026 am Muster erprobt: Bild, Hintergrundlicht und Touch-Controller arbeiten**): ein Zwischenstück aus zwei Standardteilen, das die Reihenfolge einmal
   umdreht.
   - ein kurzes 22-poliges Flachkabel (FFC, Raster 0,5 mm) vom **Typ B** – bei Typ B liegen die blanken Kontakte an den
     beiden Enden auf entgegengesetzten Seiten, bei Typ A auf derselben Seite,

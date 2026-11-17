@@ -642,7 +642,7 @@ stecken; in den folgenden Schritten bedeutet dann „Labornetzteil-Ausgang AN/AU
    **Achtung – das Displaykabel nicht direkt in J12 stecken.** J12 ist auf Alpha 1 gespiegelt belegt (README,
    Abschnitt „DSI-Display“): Ein direkt gestecktes Displaykabel für den Raspberry Pi 5 schließt die 3,3 V des Trägers
    gegen Masse kurz. Das Display nur über das dort beschriebene Zwischenstück anschließen (J12 → FFC Typ B →
-   Verlängerungsplatine → Displaykabel → Display; noch nicht erprobt). Nur stromlos stecken. An J12: Klappbügel öffnen,
+   Verlängerungsplatine → Displaykabel → Display; am 17.11.2026 erprobt). Nur stromlos stecken. An J12: Klappbügel öffnen,
    das Kabelende mit den **blanken Kontakten nach unten** (zur Platine; J12 = Hirose FH12 mit unten liegenden
    Kontakten) bis zum Anschlag einschieben, Bügel schließen. Am Display das 15-pol. Ende nach der Waveshare-Anleitung
    stecken.
