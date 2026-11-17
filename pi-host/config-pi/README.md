@@ -124,6 +124,54 @@ Makro-Beschreibung). Ein übersprungener Aufruf verstellt die Bezugstemperatur d
 3. Direkt nach `M190`/`M109` ruft `START_PRINT` das Hilfsmakro `_PI_KAMMER_WARTEN` auf: Es wartet mit eingeschaltetem Seitenlüfter (`M106 P2 S255` zur Wärmeverteilung über dem heißen Bett) nur bis zur Startschwelle **`kammer_start_min` (Standard 30 °C)** (`KTWO_CHAMBER_WAIT MINIMUM=30`). Sobald die Kammer ≥ 30 °C hat, läuft `START_PRINT` (Reinigung, Z-Tilt, `G28 Z`, Bett-Mesh, Druck) sofort weiter, während `chamber_heater` mit `TARGET={S}` (z. B. 50 °C) **während des gesamten Drucks weiter bis zur Wunschtemperatur heizt**.
 4. `END_PRINT` und `_PI_RESET_STATE` setzen `kammer_warten = 0` zurück. Außerhalb eines Drucks oder mit `M191 S50 WAIT=1` wartet `M191` wie bisher auf `S - 1`.
 
+### Hochtemperatur-Material: Kammer ab 45 °C, erste Schicht mit wärmerem Bett (17.11.2026)
+
+**Hintergrund:** ASA löste sich bei mehreren Druckstarts nach 3–17 Minuten an den Ecken vom strukturierten PEI-Bett.
+Der Druck begann jeweils schon bei 30 °C Kammer (Schwelle oben); die ersten Schichten entstanden also in Luft, die noch
+20 °C kälter war als das Soll. ASA, ABS und PC schrumpfen beim Abkühlen stark – je kälter die Luft über der ersten
+Schicht, desto stärker ziehen sich die Ecken hoch („Warping“).
+
+**Was als Hochtemperatur-Material gilt:** Düse in `START_PRINT` (`EXTRUDER_TEMP`) **≥ 250 °C** (`hoch_duese_min`)
+**und** ein vor `START_PRINT` vorgemerktes Kammer-Soll aus `M191` **≥ 45 °C** (`hoch_kammer_min`). Beispiele:
+
+| Material (Slicer) | Düse | Kammer-Soll | Hochtemperatur? |
+|---|---|---|---|
+| PLA | 220 °C | 35 °C (kein Warten) | nein |
+| PETG | 240–250 °C | 35 °C | nein |
+| ASA / ABS / PC | 260 °C | 50–60 °C | **ja** |
+| ASA ohne `M191` in der Datei | 260 °C | – | nein (keine Kammerregelung angefordert) |
+
+**Was sich dann ändert (alles im Drucker, ohne Slicer-Änderung):**
+1. `_PI_KAMMER_WARTEN HOCH=1` wartet bis **`kammer_start_min_hoch` (45 °C)** statt 30 °C (höchstens Soll − 1).
+   Die Kammerheizung heizt danach wie bisher im Druck bis zum Soll weiter. Nach einem Kaltstart dauert der
+   Druckstart dadurch einige Minuten länger. Es gibt kein Zeitlimit: Erreicht die Kammer 45 °C nie (sehr kalter
+   Raum, offene Haube), wartet der Druckstart, bis man ihn abbricht.
+2. Das Bett heizt für die **erste Schicht** auf `BED_TEMP` + **`bett_erste_schicht_plus` (10 °C)**, höchstens
+   **`bett_erste_schicht_max` (110 °C)** – bei ASA mit 90 °C also 100 °C. `START_PRINT` meldet das in der Konsole
+   („Hochtemperatur-Material – Bett für die erste Schicht 100 °C, danach 90 °C“).
+3. Zurück auf `BED_TEMP` stellt der Zeitgeber **`[delayed_gcode _PI_BETT_ERSTE_SCHICHT]`** (alle 5 s):
+   - erst wenn die Düse einmal **unter 0,5 mm** stand (erste Schicht hat begonnen; nach der Reinigung steht sie höher),
+   - dann sobald sie **über 1,0 mm** steht (ab etwa Schicht 3–6 je nach Schichthöhe; der Z-Hub der ersten Schicht
+     bleibt darunter).
+   - Setzt jemand das Bett-Soll vorher selbst (Creality Print schreibt in Schicht 2 `M140 S<Soll>`, oder eine Eingabe
+     in Mainsail), lässt der Zeitgeber es dabei und endet.
+   - Ohne laufenden Druck (Ende, Abbruch) endet er ebenfalls; `END_PRINT` und `_PI_RESET_STATE` löschen den Merker.
+
+**Einstellungen** (Variablen in `[gcode_macro _PI_MESH_STATUS]`, `macros.cfg`):
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `kammer_start_min` | 30 | Start-Schwelle Kammer für alle anderen Materialien mit `M191 S>40` |
+| `kammer_start_min_hoch` | 45 | Start-Schwelle Kammer für Hochtemperatur-Material |
+| `hoch_duese_min` | 250 | ab dieser Düsentemperatur … |
+| `hoch_kammer_min` | 45 | … und diesem Kammer-Soll gilt ein Material als Hochtemperatur-Material |
+| `bett_erste_schicht_plus` | 10 | so viel wärmer läuft das Bett in der ersten Schicht (0 = aus) |
+| `bett_erste_schicht_max` | 110 | Obergrenze dafür (Sicherheitsgrenze Bett in `[k2_safety]`: 120 °C) |
+
+Prüfen in der Konsole beim Druckstart: „Warten auf Kammertemperatur 45 °C“, „Bett für die erste Schicht …“ und später
+„Bett erste Schicht: fertig, Bett zurück auf …“ bzw. „Soll wurde auf … geändert – bleibt so“. Tests:
+`test_k2_limits.py` (Abschnitt Makros).
+
 **Weggelassen (Grund):**
 
 | Stock-Makro | Grund |

@@ -981,6 +981,112 @@ def test_makros():
           and "M106 P2 S255" in lines_w
           and "KTWO_CHAMBER_WAIT MINIMUM=30" in lines_w
           and "M106 P2 S0" in lines_w, (lines_w, msgs_w))
+    # Hochtemperatur-Material (17.11.2026): HOCH=1 -> Start erst ab 45 °C
+    ms_voll = {"druck_mesh": 0, "kammer_warten": 50, "kammer_start_min": 30,
+               "kammer_start_min_hoch": 45, "hoch_duese_min": 250,
+               "hoch_kammer_min": 45, "bett_erste_schicht_plus": 10,
+               "bett_erste_schicht_max": 110, "bett_erste_schicht": 0,
+               "bett_erhoeht": 0, "bett_phase": 0}
+    p_vor["gcode_macro _PI_MESH_STATUS"] = dict(ms_voll)
+    lines_h, _m = TB._render(env, macros, "_PI_KAMMER_WARTEN", p_vor, {"HOCH": "1"})
+    check("_PI_KAMMER_WARTEN HOCH=1: wartet bis 45 °C, heizt weiter auf 50 °C",
+          "KTWO_CHAMBER_WAIT MINIMUM=45" in lines_h
+          and "SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=50" in lines_h, lines_h)
+    lines_h, _m = TB._render(env, macros, "_PI_KAMMER_WARTEN", p_vor, {"HOCH": "0"})
+    check("_PI_KAMMER_WARTEN HOCH=0: weiter ab 30 °C",
+          "KTWO_CHAMBER_WAIT MINIMUM=30" in lines_h, lines_h)
+    p_vor["gcode_macro _PI_MESH_STATUS"] = dict(ms_voll, kammer_warten=46)
+    lines_h, _m = TB._render(env, macros, "_PI_KAMMER_WARTEN", p_vor, {"HOCH": "1"})
+    check("_PI_KAMMER_WARTEN HOCH=1, Soll 46: höchstens Soll − 1 (45)",
+          "KTWO_CHAMBER_WAIT MINIMUM=45" in lines_h, lines_h)
+    p_vor["gcode_macro _PI_MESH_STATUS"] = dict(ms_voll, kammer_warten=50)
+    lines, msgs = TB._render(env, macros, "M191", p_vor, {"S": "50"})
+    check("M191 S50 vor START_PRINT: Meldung nennt 30 und 45 °C",
+          any("ab 30" in m and "ab 45" in m for m in msgs), msgs)
+
+    # START_PRINT: ASA (Düse 260, M191 S50 vorgemerkt) -> Bett 100 erste Schicht
+    def start(ext, bed, kw):
+        pr = TB._rprinter(param, kcfg)
+        pr["gcode_macro _PI_MESH_STATUS"] = dict(ms_voll, kammer_warten=kw)
+        pr["z_tilt"] = {"applied": True}
+        return TB._render(env, macros, "START_PRINT", pr,
+                          {"EXTRUDER_TEMP": str(ext), "BED_TEMP": str(bed)})
+    ls, ms_ = start(260, 90, 50)
+    check("START_PRINT ASA: Bett 100 °C (M140/M190), Kammer HOCH=1",
+          "M140 S100.0" in ls and "M190 S100.0" in ls
+          and "_PI_KAMMER_WARTEN HOCH=1" in ls
+          and "M140 S90.0" not in ls, ls)
+    check("START_PRINT ASA: Merker + Rückstell-Zeitgeber am Ende",
+          "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_erste_schicht VALUE=90.0" in ls
+          and "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_erhoeht VALUE=100.0" in ls
+          and "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_phase VALUE=1" in ls
+          and "UPDATE_DELAYED_GCODE ID=_PI_BETT_ERSTE_SCHICHT DURATION=5" in ls
+          and any("erste Schicht 100" in m for m in ms_), (ls[-14:], ms_))
+    for ext, bed, kw, name in ((220, 50, 0, "PLA"), (250, 70, 0, "PETG"),
+                               (250, 70, 35, "PETG mit M141 35"),
+                               (260, 90, 0, "ASA ohne M191 (keine Kammer)")):
+        ls, ms_ = start(ext, bed, kw)
+        check("START_PRINT %s: Bett unverändert %d °C, HOCH=0, kein Zeitgeber" % (name, bed),
+              ("M140 S%.1f" % bed) in ls and ("M190 S%.1f" % bed) in ls
+              and "_PI_KAMMER_WARTEN HOCH=0" in ls
+              and not any("_PI_BETT_ERSTE_SCHICHT" in l for l in ls), ls)
+    ls, _m = start(260, 110, 50)
+    check("START_PRINT PC Bett 110: nicht über 110 °C (bett_erste_schicht_max)",
+          "M140 S110.0" in ls and not any("_PI_BETT_ERSTE_SCHICHT" in l for l in ls), ls)
+    ls, _m = start(260, 105, 50)
+    check("START_PRINT Bett 105: erste Schicht auf 110 gedeckelt",
+          "M140 S110.0" in ls and "M190 S110.0" in ls, ls)
+    ls, _m = start(260, 0, 50)
+    check("START_PRINT BED_TEMP=0: bleibt kalt", "M140 S0.0" in ls
+          and not any("_PI_BETT_ERSTE_SCHICHT" in l for l in ls), ls)
+    for name in ("END_PRINT", "_PI_RESET_STATE"):
+        src = macros[name][0]
+        check("%s setzt bett_erste_schicht zurück" % name,
+              "VARIABLE=bett_erste_schicht VALUE=0" in src, name)
+
+    # [delayed_gcode _PI_BETT_ERSTE_SCHICHT]
+    cfg = open(os.path.join(_HERE, "config-pi", "macros.cfg"), encoding="utf-8").read()
+    a = cfg.index("[delayed_gcode _PI_BETT_ERSTE_SCHICHT]")
+    blk = cfg[a:cfg.index("\n[", a + 1)]
+    dg = "\n".join(l.strip() for l in blk.split("gcode:", 1)[1].splitlines())
+    import jinja2
+
+    def bett(z, tgt=100.0, phase=2, state="printing", ziel=90.0):
+        msgs = []
+        pr = {"gcode_macro _PI_MESH_STATUS": dict(ms_voll, bett_erste_schicht=ziel,
+                                                  bett_erhoeht=100.0, bett_phase=phase),
+              "gcode_move": {"gcode_position": {"z": z}},
+              "heater_bed": {"target": tgt}, "print_stats": {"state": state}}
+        out = jinja2.Environment("{%", "%}", "{", "}").from_string(dg).render(
+            printer=pr, action_respond_info=lambda m: msgs.append(m) or "")
+        return [l.strip() for l in out.split("\n")
+                if l.strip() and not l.strip().startswith("#")], msgs
+    weiter = "UPDATE_DELAYED_GCODE ID=_PI_BETT_ERSTE_SCHICHT DURATION=5"
+    ls, _m = bett(5.0, phase=1)
+    check("Bett-Zeitgeber phase 1, Düse 5 mm (Reinigung): wartet weiter",
+          ls == [weiter], ls)
+    ls, _m = bett(0.2, phase=1)
+    check("Bett-Zeitgeber phase 1, Düse 0,2 mm: phase 2, weiter",
+          ls == ["SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_phase VALUE=2", weiter], ls)
+    ls, _m = bett(0.6, phase=2)
+    check("Bett-Zeitgeber phase 2, Z-Hub 0,6 mm: noch nicht zurück", ls == [weiter], ls)
+    ls, ms_ = bett(1.16, phase=2)
+    check("Bett-Zeitgeber phase 2, Düse 1,16 mm: M140 S90, Ende",
+          ls == ["M140 S90.0",
+                 "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_erste_schicht VALUE=0"]
+          and ms_, (ls, ms_))
+    ls, ms_ = bett(0.36, tgt=90.0, phase=2)
+    check("Bett-Zeitgeber: Slicer setzte in Schicht 2 schon M140 S90 -> nichts ändern, Ende",
+          ls == ["SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_erste_schicht VALUE=0"]
+          and ms_, (ls, ms_))
+    ls, _m = bett(1.5, phase=1)
+    check("Bett-Zeitgeber phase 1, Düse 1,5 mm (erste Schicht nie gesehen): kein Zurückstellen",
+          ls == [weiter], ls)
+    ls, _m = bett(0.2, state="cancelled")
+    check("Bett-Zeitgeber ohne laufenden Druck: nur Merker löschen",
+          ls == ["SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_erste_schicht VALUE=0"], ls)
+    ls, _m = bett(0.2, ziel=0.0)
+    check("Bett-Zeitgeber ohne Merker: tut nichts", ls == [], ls)
 
 
 def test_py39():

@@ -69,6 +69,10 @@ beim Start, dass der Lüfter-Abschnitt `heater: chamber_heater` hat und einen Ta
   Nach dem Bett-Aufheizen (`M190`) wartet `_PI_KAMMER_WARTEN` (mit Seitenlüfter `P2` zur
   Luftumwälzung) nur bis `kammer_start_min` (**30 °C**), danach startet der Druck sofort
   und die Kammerheizung heizt während des Drucks weiter bis zum Sollwert `S` (z. B. 50 °C).
+  Bei Hochtemperatur-Material (Düse ≥ 250 °C und Kammer-Soll ≥ 45 °C, z. B. ASA/ABS/PC;
+  17.11.2026) wartet `_PI_KAMMER_WARTEN HOCH=1` bis **45 °C** (`kammer_start_min_hoch`), und das Bett
+  läuft in der ersten Schicht 10 °C wärmer – Einzelheiten in `config-pi/README.md`, Abschnitt
+  „Hochtemperatur-Material“.
 
 ## 3. Optionen (`[k2_chamber]`)
 
