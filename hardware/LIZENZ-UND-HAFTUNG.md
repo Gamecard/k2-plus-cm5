@@ -34,9 +34,7 @@ und direkt mit der Elektronik eines 3D-Druckers. Fehler können den Drucker, den
 Geräte oder Gebäude beschädigen und Brände verursachen.
 
 Eine Haftung der Autoren für Schäden jeder Art, die aus Nachbau, Einbau oder Betrieb entstehen, ist
-ausgeschlossen, **soweit gesetzlich zulässig**. Unberührt bleibt die Haftung für Vorsatz und grobe Fahrlässigkeit
-sowie für Schäden aus der Verletzung von Leben, Körper oder Gesundheit, soweit sie gesetzlich nicht ausgeschlossen
-werden kann. Es besteht keine Gewährleistung und kein Support-Anspruch.
+ausgeschlossen. Es besteht keine Gewährleistung und kein Support-Anspruch.
 
 Der Eingriff in den Drucker erfolgt auf eigene Verantwortung und kann Garantie- bzw. Gewährleistungsansprüche
 gegenüber dem Hersteller des Druckers beeinträchtigen.
