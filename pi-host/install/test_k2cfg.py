@@ -499,6 +499,46 @@ def teil_d():
           "D5 Pi-UART /dev/ttyAMA4/2 (Variante B) ohne Warnung")
     check(K.serial_warnungen("k2_485", "/dev/ttyAMA4") != [] and K.serial_warnungen("mcu", "/dev/ttyUSB0") != [],
           "D5 ttyUSBn bzw. RS485 an ttyAMA weiterhin mit Hinweis")
+    check(K.serial_warnungen("k2_485", "/dev/ttyAMA0") == [],
+          "D5 RS485 an /dev/ttyAMA0 (Trägerplatine Alpha 1, UART0) ohne Warnung")
+    # einfuegen + Erhalt der Zusatzzeile rs485_de bei merge (Trägerplatine Alpha 1)
+    rs = ("[k2_485]\n# Kommentar\nserial: /dev/serial/by-id/usb-ANNAHME_USB-RS485-if00-port0\nbaud: 230400\n\n"
+          "[k2_box]\nallow_write: False\n\n#*# <---------------------- SAVE_CONFIG ---------------------->\n"
+          "#*# DO NOT EDIT THIS BLOCK OR BELOW. The contents are auto-generated.\n#*#\n#*# [k2_485]\n#*# x = 1\n")
+    with tempfile.TemporaryDirectory() as d:
+        neu = schreibe(d, "neu.cfg", rs)
+        ziel = schreibe(d, "ziel.cfg", rs)
+        rc, out = lauf("einfuegen", ziel, "k2_485", "rs485_de", "kernel")
+        t = lies(ziel)
+        check(rc == 0 and "Zeile angelegt" in out
+              and "serial: /dev/serial/by-id/usb-ANNAHME_USB-RS485-if00-port0\nrs485_de: kernel\nbaud: 230400\n" in t
+              and t.count("rs485_de") == 1, "D6 einfuegen legt rs485_de direkt hinter serial an (genau einmal)")
+        check(t.endswith("#*# [k2_485]\n#*# x = 1\n"), "D6 SAVE_CONFIG-Block unangetastet")
+        vorher = t
+        rc, out = lauf("einfuegen", ziel, "k2_485", "rs485_de", "kernel")
+        check(rc == 0 and "unverändert" in out and lies(ziel) == vorher, "D6 einfuegen zweimal: unverändert")
+        rc, out = lauf("einfuegen", ziel, "k2_485", "rs485_de", "adapter")
+        check(rc == 0 and lies(ziel).count("rs485_de") == 1 and "rs485_de: adapter\n" in lies(ziel),
+              "D6 einfuegen auf vorhandene Zeile: Wert ersetzt, weiter genau einmal")
+        rc, out = lauf("einfuegen", ziel, "gibt_es_nicht", "x", "1")
+        check(rc == 3 and lies(ziel).count("rs485_de") == 1, "D6 einfuegen in fehlenden Abschnitt: Exit 3")
+        ohne = schreibe(d, "ohne.cfg", "[k2_485]\nbaud: 230400\n")
+        rc, out = lauf("einfuegen", ohne, "k2_485", "rs485_de", "kernel")
+        check(rc == 0 and lies(ohne) == "[k2_485]\nrs485_de: kernel\nbaud: 230400\n",
+              "D6 einfuegen ohne serial-Zeile: direkt hinter dem Abschnittskopf")
+        # merge: bisherige Datei (Träger) hat serial /dev/ttyAMA0 + rs485_de: kernel
+        alt = schreibe(d, "alt.cfg", rs.replace("serial: /dev/serial/by-id/usb-ANNAHME_USB-RS485-if00-port0",
+                                              "serial: /dev/ttyAMA0\nrs485_de: kernel"))
+        aus = os.path.join(d, "aus.cfg")
+        rc, out = lauf("merge", neu, aus, "--alt", alt)
+        t = lies(aus) if os.path.exists(aus) else ""
+        check(rc == 0 and "serial: /dev/ttyAMA0\nrs485_de: kernel\nbaud: 230400\n" in t and t.count("rs485_de") == 1
+              and "rs485_de <- kernel (bisherige Datei, im Paket nicht gesetzt)" in out,
+              "D7 merge erhält rs485_de: kernel aus der bisherigen Datei (genau einmal, gemeldet)")
+        rc, out = lauf("merge", neu, aus, "--alt", aus)
+        check(rc == 0 and lies(aus) == t, "D7 merge wiederholt: bytegleich")
+        rc, out = lauf("merge", neu, aus, "--alt", neu)
+        check(rc == 0 and "rs485_de" not in lies(aus), "D7 bisherige Datei ohne rs485_de -> keine Zeile")
 
 
 def main():

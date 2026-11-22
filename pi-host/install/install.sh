@@ -5,6 +5,8 @@
 #   ./install.sh [Optionen]        (Hilfe: ./install.sh --hilfe)
 # Bewegt NICHTS, startet Klipper nur mit --starten. Idempotent: mehrfach
 # aufrufbar, jeder Lauf legt ein eigenes Backup unter ~/k2-pi-backup/ an.
+# Alles in einem Aufruf (Trägerplatine Alpha 1): --komplett (= --traeger --kiosk
+# --kamera --starten), dazu --betrieb für die Freigaben auf Betriebsstand.
 # =====================================================================
 set -eu
 set -o pipefail
@@ -69,6 +71,32 @@ NGINX_BIN=${NGINX_BIN:-nginx}
 NGINX_DIENST=${NGINX_DIENST:-nginx}
 SYSTEMD_DIR=${SYSTEMD_DIR:-/etc/systemd/system}
 DIENSTE_EIGEN="k2-startwaechter:k2_startwaechter.py k2-creality-bruecke:k2_creality_bruecke.py"
+# Trägerplatine Alpha 1 / Anzeige / Kamera / Freigaben (alle Standard AUS, Schritt 7b):
+TRAEGER=0                 # --traeger: traeger-alpha1/install-traeger.sh + Anschlüsse ttyAMA4/2/0
+KIOSK=0                   # --kiosk:   Mainsail im Vollbild auf dem DSI-Display (cage + Chromium)
+KAMERA=0                  # --kamera:  crowsnest auf festen Gerätenamen + Webcam-Eintrag in Moonraker
+BETRIEB=0                 # --betrieb: Freigaben (allow_*) auf Betriebsstand
+MAIN_GESETZT=0
+DUESE_GESETZT=0
+RS485_TRAEGER=0
+TRAEGER_MAIN=/dev/ttyAMA4     # UART4 (Overlay uart4-pi5)   -> Main-MCU
+TRAEGER_DUESE=/dev/ttyAMA2    # UART2 (Overlay uart2-pi5)   -> Düsen-MCU
+TRAEGER_RS485=/dev/ttyAMA0    # UART0 (uart0-pi5,rs485)     -> RS485, Senderichtung schaltet der Kernel
+# Die folgenden Pfade/Befehle lassen sich per Umgebung ändern – nur für Attrappen-Tests.
+TRAEGER_SKRIPT=${TRAEGER_SKRIPT:-$PKG/traeger-alpha1/install-traeger.sh}
+KIOSK_DIR=${KIOSK_DIR:-$HOME/k2-kiosk}
+KIOSK_PAKETE="cage chromium fonts-dejavu-core python3-evdev"
+KIOSK_UNITS="k2-kiosk k2-display-ruhe"
+KIOSK_DATEIEN="kiosk-start.sh display-ruhe.py"
+GETTY_DIENST=${GETTY_DIENST:-getty@tty1}
+BACKLIGHT_DIR=${BACKLIGHT_DIR:-/sys/class/backlight}
+V4L_BYID_DIR=${V4L_BYID_DIR:-/dev/v4l/by-id}
+CROWSNEST_CONF=${CROWSNEST_CONF:-$CONFIG_DIR/crowsnest.conf}
+CROWSNEST_DIENST=${CROWSNEST_DIENST:-crowsnest}
+MOONRAKER_URL=${MOONRAKER_URL:-http://127.0.0.1:7125}
+APT_GET=${APT_GET:-apt-get}
+MOONRAKER_VERSUCHE=${MOONRAKER_VERSUCHE:-10}   # je 2 s Pause: Moonraker kann nach Schritt 7 noch hochfahren
+WEBCAM_NAME=Bauraum
 
 hilfe() {
   cat <<'EOF'
@@ -134,8 +162,35 @@ Aufruf: ./install.sh [Optionen]
                              nach abgeschlossener Inbetriebnahme). Bleibt bei späteren Läufen erhalten
                              (Freigaben allow_* werden wie serial-Pfade übernommen); dauerhaft
                              freigeben: in homing.cfg von Hand variable_allow_move: True.
+  --traeger                  Trägerplatine Alpha 1 einrichten: traeger-alpha1/install-traeger.sh
+                             (config.txt-Block mit UARTs/RS485/CAN/Strommessung/Display, can0,
+                             Stromausfall-Wächter, tägliche Konfig-Sicherung; erst Trockenlauf in
+                             Schritt 1, dann echt) und die Anschlüsse eintragen, soweit nicht
+                             ausdrücklich angegeben: [mcu] /dev/ttyAMA4, [mcu nozzle_mcu]
+                             /dev/ttyAMA2, [k2_485] /dev/ttyAMA0 mit rs485_de: kernel.
+                             Danach ist ein NEUSTART nötig (sudo reboot).
+  --kiosk                    Anzeige einrichten: Mainsail im Vollbild auf dem DSI-Display.
+                             Fehlende Pakete (cage chromium fonts-dejavu-core python3-evdev) per
+                             apt-get, Programme nach ~/k2-kiosk/, Dienste k2-kiosk und
+                             k2-display-ruhe aktivieren, Anmeldung auf tty1 (getty@tty1) abschalten.
+                             Sofort gestartet wird nur, wenn schon ein DSI-Hintergrundlicht
+                             erkannt ist – sonst nach dem Neustart.
+  --kamera                   Kamera einrichten: in crowsnest.conf [cam 1] device auf den festen
+                             Namen unter /dev/v4l/by-id/ setzen (bei mehreren Kameras die mit
+                             CREALITY im Namen, sonst die erste) und in Moonraker die Webcam
+                             "Bauraum" anlegen, wenn dort noch keine eingetragen ist.
+                             Ohne Kamera oder ohne crowsnest: nur Warnung.
+  --betrieb                  Freigaben auf BETRIEBSSTAND setzen: _PI_FREIGABE allow_move,
+                             [k2_motor] allow_write + auto_init, [k2_box] allow_write + allow_move,
+                             [k2_prtouch] allow_move = True. NUR für einen Drucker, der mit diesem
+                             Aufbau schon in Betrieb war (z. B. Ersatz des Pi) – sonst
+                             Erstinbetriebnahme nach SCHNELLSTART Abschnitt 5. Nicht zusammen
+                             mit --bewegung-gesperrt.
+  --komplett                 Kurzform für --traeger --kiosk --kamera --starten
   --dienst NAME              systemd-Dienst (Standard: klipper, automatisch erkannt)
-  --starten                  Klipper-Dienst am Ende starten (Standard: bleibt gestoppt)
+  --starten                  Klipper-Dienst am Ende starten (Standard: bleibt gestoppt).
+                             Verlangt --traeger in diesem Lauf einen Neustart, wird Klipper nur
+                             aktiviert und startet nach dem Neustart von selbst.
   --ohne-tests               Offline-Tests überspringen
   --ohne-batch               Batch-Prüfung der Config überspringen
   --arch-egal                nur für Probeläufe auf Nicht-aarch64-Rechnern
@@ -143,7 +198,7 @@ Aufruf: ./install.sh [Optionen]
 
 Umgebung (nur bei abweichender Installation): KLIPPER_DIR, CONFIG_DIR, KLIPPY_ENV, BACKUP_ROOT,
   K2_TOOLS_DIR, MOONRAKER_CONF, MOONRAKER_ENV, MOONRAKER_DIENST, NGINX_SITE, NGINX_BIN, NGINX_DIENST,
-  SYSTEMD_DIR, BOOTSTART_DIR
+  SYSTEMD_DIR, BOOTSTART_DIR, KIOSK_DIR, CROWSNEST_CONF, CROWSNEST_DIENST, MOONRAKER_URL
 EOF
 }
 
@@ -154,9 +209,9 @@ while [ $# -gt 0 ]; do
     --printer-cfg-ersetzen)   PRINTER_ERSETZEN=1 ;;
     --save-config-aus-paket)  SAVE_AUS_PAKET=1 ;;
     --main-serial)  [ $# -ge 2 ] || { echo "FEHLER: $1 braucht einen Wert" >&2; exit 2; }
-                    if [ "$2" = auto ]; then MAIN_AUTO=1; else SET_ARGS+=(--set "mcu=$2"); fi; shift ;;
+                    if [ "$2" = auto ]; then MAIN_AUTO=1; else SET_ARGS+=(--set "mcu=$2"); fi; MAIN_GESETZT=1; shift ;;
     --duese-serial) [ $# -ge 2 ] || { echo "FEHLER: $1 braucht einen Wert" >&2; exit 2; }
-                    if [ "$2" = auto ]; then DUESE_AUTO=1; else SET_ARGS+=(--set "mcu nozzle_mcu=$2"); fi; shift ;;
+                    if [ "$2" = auto ]; then DUESE_AUTO=1; else SET_ARGS+=(--set "mcu nozzle_mcu=$2"); fi; DUESE_GESETZT=1; shift ;;
     --serial-erkennen) ERKENNEN=1 ;;
     --rs485-serial) [ $# -ge 2 ] || { echo "FEHLER: $1 braucht einen Wert" >&2; exit 2; }; SET_ARGS+=(--set "k2_485=$2"); RS485_SET=$2; shift ;;
     --material-db)  [ $# -ge 2 ] || { echo "FEHLER: $1 braucht einen Wert" >&2; exit 2; }; MATDB_QUELLE=$2; shift ;;
@@ -169,6 +224,11 @@ while [ $# -gt 0 ]; do
     --ohne-creality-bruecke)    BRUECKE=0 ;;
     --ohne-moonraker-anpassung) MOONRAKER_ANPASSEN=0 ;;
     --bewegung-gesperrt)        BEWEGUNG_SPERREN=1 ;;
+    --traeger)      TRAEGER=1 ;;
+    --kiosk)        KIOSK=1 ;;
+    --kamera)       KAMERA=1 ;;
+    --betrieb)      BETRIEB=1 ;;
+    --komplett)     TRAEGER=1; KIOSK=1; KAMERA=1; STARTEN=1 ;;
     --dienst)       [ $# -ge 2 ] || { echo "FEHLER: $1 braucht einen Wert" >&2; exit 2; }; DIENST=$2; shift ;;
     --starten)      STARTEN=1 ;;
     --ohne-tests)   TESTS=0 ;;
@@ -181,6 +241,17 @@ while [ $# -gt 0 ]; do
 done
 if [ $STOCK_UEBER -eq 1 ] && [ -z "$STOCK_CFG" ]; then
   echo "FEHLER: --stock-ueberschreiben nur zusammen mit --stock-printer-cfg DATEI" >&2; exit 2
+fi
+if [ $BETRIEB -eq 1 ] && [ $BEWEGUNG_SPERREN -eq 1 ]; then
+  echo "FEHLER: --betrieb (Freigaben an) und --bewegung-gesperrt schließen sich aus" >&2; exit 2
+fi
+# --traeger: Anschlüsse der Trägerplatine, soweit nicht ausdrücklich angegeben
+if [ $TRAEGER -eq 1 ]; then
+  [ $MAIN_GESETZT -eq 1 ]  || SET_ARGS+=(--set "mcu=$TRAEGER_MAIN")
+  [ $DUESE_GESETZT -eq 1 ] || SET_ARGS+=(--set "mcu nozzle_mcu=$TRAEGER_DUESE")
+  if [ -z "$RS485_SET" ]; then
+    SET_ARGS+=(--set "k2_485=$TRAEGER_RS485"); RS485_SET=$TRAEGER_RS485; RS485_TRAEGER=1
+  fi
 fi
 
 SCHRITT=""
@@ -381,6 +452,47 @@ if [ $MOONRAKER_ANPASSEN -eq 1 ]; then
   fi
 fi
 
+# Trägerplatine / Anzeige / Kamera (Schritt 7b) – ebenfalls vor jeder Änderung prüfen
+TR_TROCKEN=""
+if [ $TRAEGER -eq 1 ]; then
+  [ -f "$TRAEGER_SKRIPT" ] || fehler "--traeger: $TRAEGER_SKRIPT fehlt im Paket (traeger-alpha1/)"
+  MODELL=$( { tr -d '\0' < /proc/device-tree/model; } 2>/dev/null || echo "unbekannt" )
+  case "$MODELL" in
+    *"Compute Module 5"*) ok "--traeger: Plattform $MODELL" ;;
+    *) if [ $ARCH_EGAL -eq 1 ]; then warn "--traeger: Plattform $MODELL (kein Compute Module 5; --arch-egal, Probelauf)"
+       else fehler "--traeger: Plattform $MODELL – die Trägerplatine Alpha 1 gibt es nur für das Compute Module 5"; fi ;;
+  esac
+  # Trockenlauf des Träger-Skripts: zeigt nur an, verändert nichts
+  if TR_TROCKEN=$(sudo -n bash "$TRAEGER_SKRIPT" --trocken --benutzer "$(id -un)" 2>&1); then TRC=0; else TRC=$?; fi
+  if [ $TRC -ne 0 ] || printf '%s\n' "$TR_TROCKEN" | grep -q '^FEHLER'; then
+    printf '%s\n' "$TR_TROCKEN" | sed 's/^/        /' | tail -25
+    fehler "--traeger: Trockenlauf von install-traeger.sh meldet einen Fehler (Exit $TRC): $(printf '%s\n' "$TR_TROCKEN" | grep -m1 '^FEHLER' || echo 's. oben') – nichts verändert"
+  fi
+  ok "--traeger: Trockenlauf von install-traeger.sh ohne Fehler (echter Lauf in Schritt 7b)"
+  info "--traeger: Anschlüsse$([ $MAIN_GESETZT -eq 1 ] || echo " [mcu] $TRAEGER_MAIN")$([ $DUESE_GESETZT -eq 1 ] || echo " [mcu nozzle_mcu] $TRAEGER_DUESE")$([ $RS485_TRAEGER -eq 1 ] && echo " [k2_485] $TRAEGER_RS485 + rs485_de: kernel") (Schritt 5)"
+fi
+if [ $KIOSK -eq 1 ]; then
+  for f in $KIOSK_DATEIEN; do [ -f "$PKG/kiosk/$f" ] || fehler "--kiosk: kiosk/$f fehlt im Paket"; done
+  for u in $KIOSK_UNITS; do [ -f "$PKG/kiosk/$u.service" ] || fehler "--kiosk: kiosk/$u.service fehlt im Paket"; done
+  [ -d "$SYSTEMD_DIR" ] || fehler "--kiosk: systemd-Ordner fehlt: $SYSTEMD_DIR"
+  KIOSK_FEHLT=""
+  for p in $KIOSK_PAKETE; do dpkg -s "$p" >/dev/null 2>&1 || KIOSK_FEHLT="$KIOSK_FEHLT $p"; done
+  if [ -n "$KIOSK_FEHLT" ]; then
+    command -v "$APT_GET" >/dev/null 2>&1 || fehler "--kiosk: Pakete fehlen ($KIOSK_FEHLT) und $APT_GET ist nicht vorhanden"
+    ok "--kiosk: Dateien vorhanden; Pakete fehlen noch:$KIOSK_FEHLT (apt-get in Schritt 7b, braucht Internet)"
+  else
+    ok "--kiosk: Dateien und Pakete vorhanden ($KIOSK_PAKETE)"
+  fi
+  for g in video render input; do
+    id -nG 2>/dev/null | tr ' ' '\n' | grep -qx "$g" || warn "--kiosk: Benutzer $(id -un) ist nicht in der Gruppe $g (für Anzeige/Touch nötig: sudo usermod -aG $g $(id -un))"
+  done
+fi
+if [ $KAMERA -eq 1 ]; then
+  command -v curl >/dev/null 2>&1 || warn "--kamera: curl fehlt – die Webcam kann nicht in Moonraker eingetragen werden"
+  [ -f "$CROWSNEST_CONF" ] || warn "--kamera: $CROWSNEST_CONF fehlt (crowsnest nicht installiert?) – Gerätename wird nicht eingetragen"
+  ok "--kamera: Einrichtung in Schritt 7b"
+fi
+
 STAMP=$(date +%Y%m%d-%H%M%S)
 BK=$BACKUP_ROOT/$STAMP
 # zwei Läufe in derselben Sekunde dürfen sich das Backup nicht teilen
@@ -440,6 +552,38 @@ if [ -r "$NGINX_SITE" ] && [ -f "$PKG/k2web.py" ]; then
   echo "NGINX_VORHER=$(k2st "$NGV")" >> "$BK/state.env"
 else
   echo "NGINX_VORHER=keine_datei" >> "$BK/state.env"
+fi
+# Trägerplatine: Protokoll des Trockenlaufs aus Schritt 1 aufheben
+if [ $TRAEGER -eq 1 ]; then
+  mkdir -p "$BK/traeger"
+  printf '%s\n' "$TR_TROCKEN" > "$BK/traeger/trockenlauf.txt"
+fi
+# Anzeige (Kiosk): Zustand VOR diesem Lauf (uninstall.sh stellt ihn wieder her)
+if [ $KIOSK -eq 1 ]; then
+  mkdir -p "$BK/kiosk"
+  {
+    echo "KIOSK_DIR=$KIOSK_DIR"
+    echo "GETTY_DIENST=$GETTY_DIENST"
+    echo "GETTY_VORHER=$(systemctl is-enabled "$GETTY_DIENST.service" 2>/dev/null || true)"
+  } >> "$BK/state.env"
+  for u in $KIOSK_UNITS; do
+    if [ -e "$SYSTEMD_DIR/$u.service" ]; then
+      cp "$SYSTEMD_DIR/$u.service" "$BK/kiosk/$u.service.vorher"
+      v=$(systemctl is-enabled "$u.service" 2>/dev/null || true)
+      echo "KIOSK_UNIT_VORHER_${u//-/_}=${v:-unbekannt}" >> "$BK/state.env"
+    else
+      echo "KIOSK_UNIT_VORHER_${u//-/_}=fehlt" >> "$BK/state.env"
+    fi
+  done
+  for f in $KIOSK_DATEIEN; do
+    k=${f//[.-]/_}
+    if [ -e "$KIOSK_DIR/$f" ]; then
+      mkdir -p "$BK/kiosk/dateien"; cp -p "$KIOSK_DIR/$f" "$BK/kiosk/dateien/$f"
+      echo "KIOSK_DATEI_VORHER_$k=vorhanden" >> "$BK/state.env"
+    else
+      echo "KIOSK_DATEI_VORHER_$k=fehlt" >> "$BK/state.env"
+    fi
+  done
 fi
 
 # ---------------------------------------------------------------------
@@ -574,6 +718,12 @@ for src in "$PKG"/pi-host/config-pi/*.cfg; do
   echo "$b" >> "$BK/config-installiert.txt"
   info "$b"
 done
+if [ $RS485_TRAEGER -eq 1 ]; then
+  # Trägerplatine: RS485 an UART0, der Kernel schaltet die Senderichtung (DE)
+  python3 -I "$PKG/k2cfg.py" einfuegen "$CONFIG_DIR/k2-module.cfg" k2_485 rs485_de kernel \
+    || fehler "k2-module.cfg: [k2_485] rs485_de nicht eintragbar"
+  ok "k2-module.cfg: [k2_485] serial $TRAEGER_RS485 + rs485_de: kernel (--traeger)"
+fi
 if [ ! -e "$CONFIG_DIR/printer.cfg" ]; then
   PZIEL=printer.cfg; info "keine printer.cfg vorhanden – K2-printer.cfg wird printer.cfg"
 elif [ $PRINTER_ERSETZEN -eq 1 ]; then
@@ -613,6 +763,22 @@ if [ $BEWEGUNG_SPERREN -eq 1 ]; then
   python3 -I "$PKG/k2cfg.py" setze "$CONFIG_DIR/homing.cfg" "gcode_macro _PI_FREIGABE" variable_allow_move False \
     || fehler "homing.cfg: _PI_FREIGABE variable_allow_move nicht gefunden"
   ok "homing.cfg: _PI_FREIGABE allow_move False (--bewegung-gesperrt; Freigabe zur Laufzeit: ALLOW_MOTION)"
+fi
+BETRIEB_STATUS="nicht angefasst (Paketstand bzw. bisherige Werte; Option --betrieb)"
+if [ $BETRIEB -eq 1 ]; then
+  # Freigaben auf Betriebsstand: Datei | Abschnitt | Option
+  for e in "homing.cfg|gcode_macro _PI_FREIGABE|variable_allow_move" \
+           "k2-motor.cfg|k2_motor|allow_write" "k2-motor.cfg|k2_motor|auto_init" \
+           "k2-module.cfg|k2_box|allow_write" "k2-module.cfg|k2_box|allow_move" \
+           "$PZIEL|k2_prtouch|allow_move"; do
+    IFS='|' read -r bf bs bo <<< "$e"
+    python3 -I "$PKG/k2cfg.py" setze "$CONFIG_DIR/$bf" "$bs" "$bo" True \
+      || fehler "--betrieb: [$bs] $bo in $bf nicht gefunden – Rückbau: $BK/uninstall.sh"
+  done
+  echo "BETRIEB=1" >> "$BK/state.env"
+  BETRIEB_STATUS="alle sechs Freigaben True (--betrieb): Bewegung, Motoren, Filamentbox, Antasten"
+  ok "Freigaben auf Betriebsstand: $BETRIEB_STATUS"
+  warn "--betrieb ist NUR für einen Drucker gedacht, der mit diesem Aufbau schon in Betrieb war"
 fi
 FREIGABE=$(sed -n '/^\[gcode_macro _PI_FREIGABE\]/,/^\[/s/^variable_allow_move:[[:space:]]*//p' "$CONFIG_DIR/homing.cfg" 2>/dev/null | head -1)
 echo "PRINTER_ZIEL=$PZIEL" >> "$BK/state.env"
@@ -873,6 +1039,170 @@ for paar in $DIENSTE_EIGEN; do
 done
 
 # ---------------------------------------------------------------------
+schritt 7b "Trägerplatine, Anzeige, Kamera (--traeger / --kiosk / --kamera)"
+TR_NEUSTART=0        # Trägerplatine: Anschlüsse erst nach dem Neustart
+KIOSK_NEUSTART=0     # Anzeige: kein Display erkannt, startet mit dem nächsten Neustart
+# 7b-1 Trägerplatine Alpha 1: config.txt-Block, can0, Stromausfall-Wächter, Konfig-Sicherung
+TR_STATUS="nicht angefasst (Option --traeger)"
+if [ $TRAEGER -eq 1 ]; then
+  if sudo -n bash "$TRAEGER_SKRIPT" --benutzer "$(id -un)" > "$BK/traeger/install-traeger.txt" 2>&1; then TRC=0; else TRC=$?; fi
+  grep -E '^(OK|WARN|FEHLER|--  |Neustart)' "$BK/traeger/install-traeger.txt" | sed 's/^/        /' || true
+  [ $TRC -eq 0 ] || fehler "install-traeger.sh fehlgeschlagen (Exit $TRC, Protokoll $BK/traeger/install-traeger.txt) – Module/Config sind installiert; Rückbau: $BK/uninstall.sh"
+  TR_SICHERUNG=$(sed -n 's/^Sicherungen: //p' "$BK/traeger/install-traeger.txt" | tail -1)
+  {
+    echo "TRAEGER_GELAUFEN=1"
+    echo "TRAEGER_SICHERUNG=${TR_SICHERUNG:-unbekannt}"
+  } >> "$BK/state.env"
+  if grep -q '^Neustart nötig' "$BK/traeger/install-traeger.txt"; then
+    TR_NEUSTART=1
+    TR_STATUS="eingespielt – NEUSTART NÖTIG (Sicherung geänderter Systemdateien: ${TR_SICHERUNG:-unbekannt})"
+  else
+    TR_STATUS="schon aktuell – nichts geändert"
+  fi
+  ok "Trägerplatine: $TR_STATUS (Protokoll $BK/traeger/install-traeger.txt)"
+  # Ohne die Overlays fehlen die Anschlüsse noch -> Neustart auch dann, wenn nur config.txt aus
+  # einem früheren Lauf stammt und noch nie neu gestartet wurde
+  for d in "$TRAEGER_MAIN" "$TRAEGER_DUESE" "$TRAEGER_RS485"; do
+    if [ ! -e "$d" ] && [ $ARCH_EGAL -eq 0 ]; then
+      TR_NEUSTART=1
+      info "$d ist noch nicht da – die Anschlüsse erscheinen erst nach dem Neustart"
+      break
+    fi
+  done
+fi
+
+# 7b-2 Anzeige: Mainsail im Vollbild auf dem DSI-Display (cage + Chromium) + Display-Ruhe
+KIOSK_STATUS="nicht angefasst (Option --kiosk)"
+if [ $KIOSK -eq 1 ]; then
+  if [ -n "$KIOSK_FEHLT" ]; then
+    info "apt-get installiert:$KIOSK_FEHLT (kann einige Minuten dauern, Protokoll $BK/kiosk/apt.txt)"
+    sudo -n env DEBIAN_FRONTEND=noninteractive "$APT_GET" update -qq > "$BK/kiosk/apt.txt" 2>&1 \
+      || warn "apt-get update fehlgeschlagen – weiter mit den vorhandenen Paketlisten"
+    sudo -n env DEBIAN_FRONTEND=noninteractive "$APT_GET" install -y --no-install-recommends $KIOSK_FEHLT >> "$BK/kiosk/apt.txt" 2>&1 \
+      || fehler "apt-get install$KIOSK_FEHLT fehlgeschlagen ($BK/kiosk/apt.txt) – Internet? Danach erneut mit --kiosk"
+    ok "Pakete installiert:$KIOSK_FEHLT"
+  else
+    ok "Pakete vorhanden ($KIOSK_PAKETE)"
+  fi
+  KNEU=0
+  mkdir -p "$KIOSK_DIR"
+  for f in $KIOSK_DATEIEN; do
+    if ! cmp -s "$PKG/kiosk/$f" "$KIOSK_DIR/$f"; then
+      install -m 0755 "$PKG/kiosk/$f" "$KIOSK_DIR/$f.k2tmp"
+      mv -f "$KIOSK_DIR/$f.k2tmp" "$KIOSK_DIR/$f"
+      cmp -s "$PKG/kiosk/$f" "$KIOSK_DIR/$f" || fehler "Kopie kiosk/$f fehlerhaft"
+      KNEU=1
+    fi
+    chmod 0755 "$KIOSK_DIR/$f"
+  done
+  UNEU=0
+  for u in $KIOSK_UNITS; do
+    # Die Einheiten im Paket nennen Benutzer pi und /home/pi/k2-kiosk (Weg von Hand, kiosk/LIESMICH.md);
+    # hier auf den aufrufenden Benutzer und den echten Ordner umgeschrieben
+    sed -e "s#^User=pi\$#User=$(id -un)#" -e "s#/home/pi/k2-kiosk#$KIOSK_DIR#g" \
+        "$PKG/kiosk/$u.service" > "$BK/kiosk/$u.service.neu"
+    if ! cmp -s "$BK/kiosk/$u.service.neu" "$SYSTEMD_DIR/$u.service"; then
+      sudo -n install -m 0644 "$BK/kiosk/$u.service.neu" "$SYSTEMD_DIR/$u.service" || fehler "Einheit nicht installierbar ($SYSTEMD_DIR/$u.service)"
+      UNEU=1
+    fi
+  done
+  if [ $UNEU -eq 1 ]; then sudo -n systemctl daemon-reload || fehler "systemctl daemon-reload fehlgeschlagen"; fi
+  # Die Anmeldung auf tty1 weicht dem Kiosk (die Einheit k2-kiosk trägt dazu Conflicts=)
+  if [ "$(systemctl is-enabled "$GETTY_DIENST.service" 2>/dev/null || true)" = enabled ]; then
+    sudo -n systemctl disable "$GETTY_DIENST.service" >/dev/null 2>&1 || warn "systemctl disable $GETTY_DIENST fehlgeschlagen"
+    info "Anmeldung auf tty1 ($GETTY_DIENST) abgeschaltet"
+  fi
+  for u in $KIOSK_UNITS; do
+    sudo -n systemctl enable "$u.service" >/dev/null 2>&1 || fehler "systemctl enable $u.service fehlgeschlagen"
+  done
+  echo "KIOSK_INSTALLIERT=1" >> "$BK/state.env"
+  if ls -A "$BACKLIGHT_DIR" 2>/dev/null | grep -q .; then
+    for u in $KIOSK_UNITS; do
+      if [ $KNEU -eq 1 ] || [ $UNEU -eq 1 ] || ! systemctl is-active --quiet "$u.service"; then
+        sudo -n systemctl restart "$u.service" || fehler "systemctl restart $u.service fehlgeschlagen"
+      fi
+    done
+    if [ $KNEU -eq 1 ] || [ $UNEU -eq 1 ]; then KIOSK_STATUS="installiert, aktiviert, läuft (Display erkannt)"
+    else KIOSK_STATUS="unverändert, aktiviert, läuft"; fi
+  else
+    KIOSK_STATUS="$([ $KNEU -eq 1 ] || [ $UNEU -eq 1 ] && echo installiert || echo unverändert), aktiviert – startet nach dem NEUSTART (noch kein DSI-Hintergrundlicht unter $BACKLIGHT_DIR)"
+    KIOSK_NEUSTART=1
+  fi
+  ok "Anzeige: $KIOSK_STATUS; Programme in $KIOSK_DIR"
+fi
+
+# 7b-3 Kamera: fester Gerätename für crowsnest + Webcam-Eintrag in Moonraker
+KAM_STATUS="nicht angefasst (Option --kamera)"
+if [ $KAMERA -eq 1 ]; then
+  KAM_DEV=""
+  if [ -d "$V4L_BYID_DIR" ]; then
+    for k in "$V4L_BYID_DIR"/*-video-index0; do
+      [ -e "$k" ] || continue
+      [ -n "$KAM_DEV" ] || KAM_DEV=$k
+      case "$(basename "$k" | tr '[:lower:]' '[:upper:]')" in *CREALITY*) KAM_DEV=$k; break ;; esac
+    done
+  fi
+  if [ -z "$KAM_DEV" ]; then
+    KAM_STATUS="keine Kamera erkannt ($V4L_BYID_DIR/*-video-index0) – nichts geändert"
+    warn "Kamera: $KAM_STATUS; nach dem Anstecken erneut mit --kamera"
+  else
+    KAM_STATUS="Gerät $(basename "$KAM_DEV")"
+    if [ -f "$CROWSNEST_CONF" ]; then
+      if R=$(python3 -I "$PKG/k2cfg.py" setze "$CROWSNEST_CONF" "cam 1" device "$KAM_DEV" 2>&1); then
+        case "$R" in
+          *"<-"*)
+            ok "crowsnest.conf: [cam 1] device -> $KAM_DEV (vorher im Backup $BK/config.tar.gz)"
+            if systemctl cat "$CROWSNEST_DIENST.service" >/dev/null 2>&1; then
+              sudo -n systemctl restart "$CROWSNEST_DIENST" || warn "systemctl restart $CROWSNEST_DIENST fehlgeschlagen – von Hand neu starten"
+            else
+              warn "Dienst $CROWSNEST_DIENST nicht gefunden – crowsnest von Hand neu starten"
+            fi
+            KAM_STATUS="$KAM_STATUS in crowsnest.conf eingetragen" ;;
+          *) ok "crowsnest.conf: [cam 1] device steht schon auf $KAM_DEV"; KAM_STATUS="$KAM_STATUS steht schon in crowsnest.conf" ;;
+        esac
+      else
+        warn "crowsnest.conf: [cam 1] device nicht gefunden – Gerätename NICHT eingetragen ($CROWSNEST_CONF)"
+        KAM_STATUS="$KAM_STATUS NICHT eingetragen (kein [cam 1] device in crowsnest.conf)"
+      fi
+    else
+      warn "Kamera: $CROWSNEST_CONF fehlt – Gerätename nicht eingetragen"
+      KAM_STATUS="$KAM_STATUS erkannt, crowsnest.conf fehlt"
+    fi
+    # Webcam in Moonraker (Mainsail zeigt sie dann an) – nur wenn dort noch keine steht
+    if command -v curl >/dev/null 2>&1; then
+      WN=""
+      for i in $(seq 1 "$MOONRAKER_VERSUCHE"); do
+        if WL=$(curl -s --max-time 5 "$MOONRAKER_URL/server/webcams/list" 2>/dev/null) \
+           && WN=$(printf '%s' "$WL" | python3 -I -c 'import json,sys; print(len(json.load(sys.stdin)["result"]["webcams"]))' 2>/dev/null); then
+          break
+        fi
+        WN=""; [ "$i" = "$MOONRAKER_VERSUCHE" ] || sleep 2
+      done
+      if [ -z "$WN" ]; then
+        warn "Moonraker unter $MOONRAKER_URL nicht erreichbar – Webcam NICHT eingetragen (später erneut mit --kamera)"
+        KAM_STATUS="$KAM_STATUS; Webcam nicht eingetragen (Moonraker nicht erreichbar)"
+      elif [ "$WN" = 0 ]; then
+        WR=$(curl -s --max-time 10 -X POST "$MOONRAKER_URL/server/webcams/item" -H 'Content-Type: application/json' \
+          -d "{\"name\":\"$WEBCAM_NAME\",\"location\":\"printer\",\"service\":\"mjpegstreamer-adaptive\",\"enabled\":true,\"target_fps\":15,\"target_fps_idle\":5,\"stream_url\":\"/webcam/?action=stream\",\"snapshot_url\":\"/webcam/?action=snapshot\",\"flip_horizontal\":false,\"flip_vertical\":false,\"rotation\":0,\"aspect_ratio\":\"4:3\"}" 2>/dev/null || true)
+        case "$WR" in
+          *'"webcam"'*) echo "KAMERA_WEBCAM_ANGELEGT=$WEBCAM_NAME" >> "$BK/state.env"
+                        echo "MOONRAKER_URL=$MOONRAKER_URL" >> "$BK/state.env"
+                        ok "Moonraker: Webcam \"$WEBCAM_NAME\" angelegt (/webcam/, erscheint in Mainsail)"
+                        KAM_STATUS="$KAM_STATUS; Webcam \"$WEBCAM_NAME\" in Moonraker angelegt" ;;
+          *) warn "Moonraker: Webcam nicht angelegt (Antwort: $(printf '%s' "$WR" | head -c 120))"
+             KAM_STATUS="$KAM_STATUS; Webcam NICHT angelegt (Antwort von Moonraker unerwartet)" ;;
+        esac
+      else
+        ok "Moonraker: schon $WN Webcam(s) eingetragen – unverändert"
+        KAM_STATUS="$KAM_STATUS; Moonraker hat schon $WN Webcam(s) – unverändert"
+      fi
+    else
+      KAM_STATUS="$KAM_STATUS; Webcam nicht eingetragen (curl fehlt)"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------
 schritt 8 "Abschluss"
 # k2-bootstart.service (Standard AUS; nur mit --bootstart / --bootstart-aus angefasst)
 if [ $BOOTSTART -eq 1 ]; then
@@ -914,10 +1244,17 @@ elif [ -e "$BS_UNIT" ]; then
 else
   BOOTSTART_STATUS="nicht installiert (Standard; Option --bootstart)"
 fi
-if [ $STARTEN -eq 1 ]; then
+if [ $STARTEN -eq 1 ] && [ $TR_NEUSTART -eq 1 ]; then
+  # Die Anschlüsse der Trägerplatine gibt es erst nach dem Neustart: jetzt nur aktivieren
+  sudo -n systemctl enable "$DIENST" >/dev/null 2>&1 || warn "systemctl enable $DIENST fehlgeschlagen – nach dem Neustart von Hand starten"
+  DIENST_STATUS="aktiviert, startet nach dem NEUSTART (Anschlüsse der Trägerplatine fehlen bis dahin)"
+  ok "$DIENST nicht gestartet: $DIENST_STATUS"
+elif [ $STARTEN -eq 1 ]; then
   sudo -n systemctl start "$DIENST" || fehler "systemctl start $DIENST fehlgeschlagen"
+  DIENST_STATUS=gestartet
   ok "$DIENST gestartet (--starten) – klippy.log beobachten"
 else
+  DIENST_STATUS=gestoppt
   ok "$DIENST bleibt GESTOPPT (Start: sudo systemctl start $DIENST oder erneut mit --starten)"
 fi
 echo "FERTIG=1" >> "$BK/state.env"
@@ -934,17 +1271,56 @@ ZUSAMMENFASSUNG
   Stock-Kal: $STOCK_STATUS
   Backup:    $BK   (Rückbau: $BK/uninstall.sh  bzw.  ./uninstall.sh)
   Prüfungen: Tests $([ $TESTS -eq 1 ] && echo grün || echo übersprungen), Batch $([ $BATCH -eq 1 ] && echo 'EXIT 0' || echo übersprungen)
-  Dienst:    $([ $STARTEN -eq 1 ] && echo gestartet || echo gestoppt)
+  Dienst:    $DIENST_STATUS
   Bootstart: k2-bootstart.service $BOOTSTART_STATUS
   Wächter:   k2-startwaechter.service: $SW_STATUS
   Brücke:    k2-creality-bruecke.service: $BR_STATUS
   nginx:     $NG_STATUS
   Moonraker: $MR_STATUS
+  Träger:    $TR_STATUS
+  Anzeige:   $KIOSK_STATUS
+  Kamera:    $KAM_STATUS
+  Freigaben: $BETRIEB_STATUS
 --------------------------------------------------------------------
 EOF
+if [ $TR_NEUSTART -eq 1 ] || [ $KIOSK_NEUSTART -eq 1 ]; then
+  echo
+  echo "*** NEUSTART NÖTIG:  sudo reboot  ***"
+  if [ $TR_NEUSTART -eq 1 ]; then
+    echo "  Trägerplatine: Die Anschlüsse ($TRAEGER_MAIN, $TRAEGER_DUESE, $TRAEGER_RS485) gibt es erst nach dem Neustart."
+    if [ $STARTEN -eq 1 ]; then echo "  Klipper startet danach von selbst."
+    else echo "  Klipper danach starten: sudo systemctl start $DIENST"; fi
+  fi
+  if [ $KIOSK_NEUSTART -eq 1 ]; then
+    echo "  Anzeige: Das Bild erscheint erst nach dem Neustart (mit angeschlossenem Display)."
+    echo "  Bis dahin bleibt das Display dunkel – das ist kein Fehler."
+  fi
+  echo "  Den Pi nicht einfach vom Strom trennen, sondern mit sudo reboot neu starten."
+fi
+if [ $BETRIEB -eq 1 ]; then
+  cat <<EOF
 
+ACHTUNG --betrieb: Bewegung, Motoren, Filamentbox und Antasten sind FREIGEGEBEN.
+  Nur richtig für einen Drucker, der mit diesem Aufbau schon in Betrieb war (z. B. Ersatz des Pi).
+  Sonst: erneut mit --bewegung-gesperrt installieren und die Erstinbetriebnahme nach
+  SCHNELLSTART-K2-PLUS.md Abschnitt 5 durchgehen.
+EOF
+fi
+if [ $TRAEGER -eq 1 ] || [ $KIOSK -eq 1 ] || [ $KAMERA -eq 1 ] || [ $BETRIEB -eq 1 ]; then
+  cat <<EOF
+
+NICHT von install.sh abgedeckt (bleibt Handarbeit):
+  - Kalibrierung (Bettnetz, Temperaturregelung, Schwingungsdämpfung, Schnittposition): neu messen
+    oder mit --stock-printer-cfg die Werte des Original-Druckers übernehmen.
+  - Belegung der Filamentbox (Material/Farbe je Fach): Makro CFS_FARBEN in Mainsail.
+  - Bootloader-Einstellung PSU_MAX_CURRENT=5000 (README-traeger-alpha1.md, Schritt 5).
+EOF
+fi
+
+echo
 echo "SERIELLE PORTS (by-id):"
 if [ -d /dev/serial/by-id ]; then ls -l /dev/serial/by-id/ | sed '1d; s/^/  /'
+elif [ $TRAEGER -eq 1 ]; then echo "  keine USB-Adapter – die Trägerplatine nutzt die Pi-UARTs ($TRAEGER_MAIN, $TRAEGER_DUESE, $TRAEGER_RS485)"
 else echo "  /dev/serial/by-id/ fehlt – noch kein USB-UART/RS485-Adapter erkannt (Lower-Board/Adapter anstecken)"; fi
 echo
 echo "Noch Platzhalter (ANNAHME) eintragen:"

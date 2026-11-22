@@ -7,6 +7,29 @@
 > Stand des Layouts: **Umbau „Weg A“** – kein Toolhead-Stecker J9, keine eFuse, GPIO6/GPIO26 frei, Eingangssicherung
 > F1 = 3 A, INA226 nur noch 0x40 und 0x41.
 
+## Kurzweg: `install.sh --traeger`
+
+Sitzt das CM5 schon auf dem Träger (zum Beispiel ein frisch aufgesetzter oder ersetzter Pi), erledigt das
+Installationspaket die Software-Schritte dieser Anleitung in einem Aufruf – `./install.sh --traeger` bzw.
+`--komplett` (`../install/README.md` §3a):
+
+| Schritt dieser Anleitung | mit `install.sh --traeger` |
+|---|---|
+| 2 Trockenlauf | ja – vor jeder Änderung; bei einer `FEHLER`-Zeile bricht `install.sh` ab |
+| 3 Modul `k2_485.py` | ja – kommt mit allen Modulen des Pakets |
+| 4 Paket einspielen (`install-traeger.sh`) | ja – mit `sudo`, Protokoll im Backup-Ordner des Laufs unter `traeger/` |
+| 5 Bootloader `PSU_MAX_CURRENT` | **nein** – bleibt Handarbeit |
+| 6 Konfiguration sichern | ja – der ganze Config-Ordner liegt im Backup des Laufs |
+| 7 Klipper-Konfig umstellen | ja – `/dev/ttyAMA4`, `/dev/ttyAMA2`, `/dev/ttyAMA0` und `rs485_de: kernel` (genau einmal), soweit nicht per Option anders angegeben |
+| 8, 9 und Teil B (Umbau, Messungen) | **nein** – das ist Arbeit am Gerät |
+| Teil C (schreibgeschütztes System) | **nein** – `install.sh` ruft `install-traeger.sh` nie mit `--readonly` auf |
+
+Danach ist ein Neustart nötig (`sudo reboot`); erst dann gibt es die drei Anschlüsse. Einen Rückbau der
+Systemdateien macht `uninstall.sh` **nicht** – dafür gilt Teil D dieser Anleitung; `install-traeger.sh` legt die
+Sicherungen selbst unter `/var/backups/k2-traeger/<zeit>/` ab.
+Prüfstand: `install-traeger.sh` selbst läuft an einem Drucker; der Aufruf **über `install.sh`** ist bisher nur in
+einer Attrappe geprüft (`../install/test_k2_install.py`, das echte Skript dort nur im Trockenlauf).
+
 ## Inhalt des Ordners
 
 | Datei | Zweck | Ziel auf dem Pi (macht `install-traeger.sh`) |

@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """Attrappen-Test für install.sh / uninstall.sh – Schwerpunkt Schritt 7
 (Start-Wächter, Creality-Brücke + nginx-Upload-Block, Moonraker enable_api_key),
---bewegung-gesperrt und Rückbau.
+--bewegung-gesperrt, Rückbau und Schritt 7b (--traeger, --kiosk, --kamera,
+--komplett) samt --betrieb.
 
 Baut je Fall in einem Temp-Ordner:
   * ein Paket (aus dem Repo- oder dem Paket-Layout dieses Ordners) mit Dummy-
@@ -10,7 +11,12 @@ Baut je Fall in einem Temp-Ordner:
   * ein Fake-HOME: git-Klipper (klippy/klippy.py), printer_data/config mit
     printer.cfg + moonraker.conf, moonraker-env/bin/python (python3 + Fake-tornado),
   * ein Fake-/etc: systemd/system/, nginx/sites-available/mainsail,
-  * Fake-Befehle im PATH: sudo, systemctl, nginx, id (Benutzer "pi", UID 1000).
+  * Fake-Befehle im PATH: sudo, systemctl, nginx, id (Benutzer "pi", UID 1000),
+    dazu dpkg, apt-get und curl (Moonraker-Webcam-Liste) für Schritt 7b,
+  * im Paket: die echten Dateien aus kiosk/ und eine Attrappe von
+    traeger-alpha1/install-traeger.sh (protokolliert nur; das echte Skript läuft
+    hier ausschließlich im Trockenlauf, Fall P),
+  * leere bzw. gefüllte Ordner anstelle von /sys/class/backlight und /dev/v4l/by-id.
 Kein Root, kein Netz, keine Hardware; braucht bash, git, coreutils, python3.
 Läuft install.sh mit --arch-egal --ohne-tests --ohne-batch --klipper-nicht-anfassen.
 
@@ -27,8 +33,14 @@ import tempfile
 HIER = os.path.dirname(os.path.abspath(__file__))
 if os.path.isdir(os.path.join(HIER, "pi-host")) and os.path.isfile(os.path.join(HIER, "install.sh")):
     PIHOST = os.path.join(HIER, "pi-host")          # Paket-Layout
+    KIOSK_SRC = os.path.join(HIER, "kiosk")
+    TRAEGER_SRC = os.path.join(HIER, "traeger-alpha1")
 else:
     PIHOST = os.path.dirname(HIER)                  # Repo-Layout: pi-host/install/
+    KIOSK_SRC = os.path.join(PIHOST, "kiosk")
+    TRAEGER_SRC = os.path.join(PIHOST, "traeger-alpha1")
+KIOSK_DATEIEN = ("kiosk-start.sh", "display-ruhe.py", "k2-kiosk.service", "k2-display-ruhe.service")
+KIOSK_PAKETE = "cage chromium fonts-dejavu-core python3-evdev"
 PAKET_DATEIEN = ("install.sh", "uninstall.sh", "k2cfg.py", "k2web.py",
                  "k2_startwaechter.py", "k2-startwaechter.service",
                  "k2_creality_bruecke.py", "k2-creality-bruecke.service")
@@ -118,7 +130,53 @@ case "$1" in
   *) exit 1 ;;
 esac
 """,
+    # Paketverwaltung: installierte Pakete stehen (eines je Zeile) in $FAKE_STATE.pakete
+    "dpkg": """#!/bin/bash
+[ "$1" = -s ] && grep -qx "$2" "${FAKE_STATE:?}.pakete" 2>/dev/null
+""",
+    "apt-get": """#!/bin/bash
+S=${FAKE_STATE:?}; echo "apt-get $*" >> "$S.log"
+[ -f "$S.apt-fehler" ] && exit 100
+[ "$1" = install ] || exit 0
+shift
+for a in "$@"; do case "$a" in -*) ;; *) echo "$a" >> "$S.pakete" ;; esac; done
+""",
+    # Moonraker: Webcam-Liste = Zeilen in $FAKE_STATE.webcams (je Zeile ein Name)
+    "curl": """#!/bin/bash
+S=${FAKE_STATE:?}; echo "curl $*" >> "$S.log"
+[ -f "$S.moonraker-aus" ] && exit 7
+case " $* " in
+  *" DELETE "*) n=$(printf '%s\\n' "$@" | sed -n 's/^name=//p'); grep -qx "$n" "$S.webcams" 2>/dev/null || { echo '{"error":{"code":404}}'; exit 0; }
+               grep -vx "$n" "$S.webcams" > "$S.webcams.neu"; mv "$S.webcams.neu" "$S.webcams"
+               echo '{"result":{"webcam":{"name":"'"$n"'"}}}' ;;
+  *" POST "*)  n=$(printf '%s\\n' "$@" | sed -n 's/.*"name":"\\([^"]*\\)".*/\\1/p' | head -1)
+               printf '%s\\n' "$@" | grep -m1 '"name"' > "$S.webcam-post"
+               echo "$n" >> "$S.webcams"; echo '{"result":{"webcam":{"name":"'"$n"'"}}}' ;;
+  *) l=""; while read -r n; do [ -n "$n" ] && l="$l${l:+,}{\\"name\\":\\"$n\\"}"; done < <(cat "$S.webcams" 2>/dev/null)
+     echo '{"result":{"webcams":['"$l"']}}' ;;
+esac
+""",
 }
+# Attrappe von traeger-alpha1/install-traeger.sh: gleiche Meldungszeilen wie das Original
+# („Sicherungen: …“, „Neustart nötig …“, „FEHLER …“), verändert nichts.
+FAKE_TRAEGER = """#!/bin/bash
+S=${FAKE_STATE:?}; echo "traeger $*" >> "$S.log"
+if [ -f "$S.traeger-fehler" ]; then echo "FEHLER Attrappe: Paketdatei fehlt" >&2; exit 1; fi
+echo "Sicherungen: /var/backups/k2-traeger/attrappe"
+case " $* " in *" --trocken "*) echo "=== TROCKENLAUF: es wird NICHTS verändert ==="; echo "TROCKEN: config.txt"; exit 0 ;; esac
+[ -f "$S.traeger-echt-fehler" ] && { echo "FEHLER Attrappe: dtc" >&2; exit 1; }
+if [ -f "$S.traeger-fertig" ]; then echo "OK   unverändert: config.txt"
+else touch "$S.traeger-fertig"; echo "OK   abgelegt: config.txt"; echo "Neustart nötig (config.txt/Overlays): sudo reboot"; fi
+"""
+CROWSNEST_CONF = """[crowsnest]
+log_path: /home/pi/printer_data/logs/crowsnest.log
+
+[cam 1]
+mode: ustreamer
+port: 8080
+device: /dev/video0
+resolution: 640x480
+"""
 
 
 def schreibe(pfad, inhalt, modus=0o644):
@@ -147,6 +205,10 @@ class Attrappe:
         self.C = os.path.join(self.H, "printer_data", "config")
         self.MRC = os.path.join(self.C, "moonraker.conf")
         self.TD = os.path.join(self.H, "k2-tools")
+        self.KD = os.path.join(self.H, "k2-kiosk")
+        self.BL = os.path.join(tmp, "backlight")        # anstelle von /sys/class/backlight
+        self.V4L = os.path.join(tmp, "v4l-by-id")       # anstelle von /dev/v4l/by-id
+        self.CN = os.path.join(self.C, "crowsnest.conf")
         # Paket
         for f in PAKET_DATEIEN:
             os.makedirs(self.P, exist_ok=True)
@@ -156,6 +218,10 @@ class Attrappe:
         schreibe(os.path.join(self.P, "pi-host", "k2_attrappe.py"), "# Dummy-Modul\n")
         schreibe(os.path.join(self.P, "pi-host", "k2_motor_init.py"), "# Dummy k2_motor\n")
         schreibe(os.path.join(self.P, "nachbau", "attrappe.py"), "# Dummy nachbau\n")
+        for f in KIOSK_DATEIEN:
+            os.makedirs(os.path.join(self.P, "kiosk"), exist_ok=True)
+            shutil.copy2(os.path.join(KIOSK_SRC, f), os.path.join(self.P, "kiosk", f))
+        schreibe(os.path.join(self.P, "traeger-alpha1", "install-traeger.sh"), FAKE_TRAEGER, 0o755)
         zeilen = []
         for wurzel, _d, dateien in os.walk(self.P):
             for f in dateien:
@@ -186,9 +252,31 @@ class Attrappe:
             schreibe(self.NS, nginx)
         for n, inh in FAKE.items():
             schreibe(os.path.join(self.B, n), inh, 0o755)
+        os.makedirs(self.BL)
+        os.makedirs(self.V4L)
+        schreibe(self.S + ".enabled.getty@tty1", "enabled\n")
         self.env = {"HOME": self.H, "PATH": self.B + ":/usr/bin:/bin", "LANG": "C.UTF-8",
                     "FAKE_STATE": self.S, "SYSTEMD_DIR": self.SD, "NGINX_SITE": self.NS,
-                    "BOOTSTART_UNIT": os.path.join(self.SD, "k2-bootstart.service")}
+                    "BOOTSTART_UNIT": os.path.join(self.SD, "k2-bootstart.service"),
+                    "BACKLIGHT_DIR": self.BL, "V4L_BYID_DIR": self.V4L, "MOONRAKER_VERSUCHE": "1"}
+
+    def kamera(self, *namen, crowsnest=True):
+        """Kameras unter der by-id-Attrappe anlegen (+ crowsnest.conf und -Dienst)."""
+        for n in namen:
+            schreibe(os.path.join(self.V4L, n), "")
+        if crowsnest:
+            schreibe(self.CN, CROWSNEST_CONF)
+            schreibe(os.path.join(self.SD, "crowsnest.service"), "[Service]\nExecStart=/bin/true\n")
+
+    def log(self):
+        try:
+            return lies(self.S + ".log").splitlines()
+        except OSError:
+            return []
+
+    def opt(self, datei, abschnitt, schluessel):
+        """Wert der ersten aktiven Zeile (wie k2cfg.py sie liest), sonst None."""
+        return K2CFG.options(lies(os.path.join(self.C, datei)), ((abschnitt, schluessel),)).get((abschnitt, schluessel))
 
     def lauf(self, skript, *opt, klipper=False, env=None):
         a = ["bash", "./" + skript] + list(opt)
@@ -244,6 +332,225 @@ class Attrappe:
 
 def fall(name):
     print("\n--- " + name)
+
+
+def _k2cfg():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("k2cfg", os.path.join(HIER, "k2cfg.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+K2CFG = _k2cfg()
+BETRIEB_SCHALTER = (("homing.cfg", "gcode_macro _PI_FREIGABE", "variable_allow_move"),
+                    ("k2-motor.cfg", "k2_motor", "allow_write"), ("k2-motor.cfg", "k2_motor", "auto_init"),
+                    ("k2-module.cfg", "k2_box", "allow_write"), ("k2-module.cfg", "k2_box", "allow_move"),
+                    ("printer-k2.cfg", "k2_prtouch", "allow_move"))
+
+
+def ohne_backup(a, vorher, nachher):
+    """Geänderte Pfade zwischen zwei Schnappschüssen, ohne ~/k2-pi-backup und klippy/extras."""
+    return sorted(p for p in set(vorher) | set(nachher)
+                  if vorher.get(p) != nachher.get(p)
+                  and "/k2-pi-backup/" not in p and not p.endswith("/k2-pi-backup")
+                  and "/klippy/extras/" not in p)
+
+
+def faelle_7b(wurzel):
+    """Schritt 7b: --komplett (= --traeger --kiosk --kamera --starten), --betrieb, Rückbau."""
+    CRE = "usb-CREALITY_Kamera_TEST-video-index0"
+    fall("L --komplett: Trägerplatine, Anzeige, Kamera in einem Aufruf")
+    t = Attrappe(os.path.join(wurzel, "l"))
+    t.kamera("usb-Fremd_Kamera_TEST-video-index0", CRE, "usb-CREALITY_Kamera_TEST-video-index1")
+    rc, out = t.lauf("install.sh", "--komplett")
+    check(rc == 0, "L install.sh --komplett Exit 0", out[-2500:] if rc else "")
+    lg = t.log()
+    tr = [z for z in lg if z.startswith("traeger ")]
+    check(tr == ["traeger --trocken --benutzer pi", "traeger --benutzer pi"],
+          "L install-traeger.sh: erst Trockenlauf, dann echter Lauf (je einmal)", str(tr))
+    check(t.opt("printer-k2.cfg", "mcu", "serial") == "/dev/ttyAMA4"
+          and t.opt("printer-k2.cfg", "mcu nozzle_mcu", "serial") == "/dev/ttyAMA2"
+          and t.opt("k2-module.cfg", "k2_485", "serial") == "/dev/ttyAMA0",
+          "L Anschlüsse: [mcu] ttyAMA4, [mcu nozzle_mcu] ttyAMA2, [k2_485] ttyAMA0")
+    km = lies(os.path.join(t.C, "k2-module.cfg"))
+    check(t.opt("k2-module.cfg", "k2_485", "rs485_de") == "kernel"
+          and len(re.findall(r"^rs485_de\s*:", km, re.M)) == 1
+          and "serial: /dev/ttyAMA0\nrs485_de: kernel\n" in km, "L [k2_485] rs485_de: kernel genau einmal, hinter serial")
+    apt = [z for z in lg if z.startswith("apt-get install")]
+    check(apt == ["apt-get install -y --no-install-recommends " + KIOSK_PAKETE], "L apt-get: genau die vier fehlenden Pakete", str(apt))
+    check(all(open(os.path.join(t.KD, f), "rb").read() == open(os.path.join(KIOSK_SRC, f), "rb").read()
+              and os.access(os.path.join(t.KD, f), os.X_OK) for f in ("kiosk-start.sh", "display-ruhe.py")),
+          "L ~/k2-kiosk: kiosk-start.sh und display-ruhe.py bytegleich und ausführbar")
+    uk, ur = t.unit("k2-kiosk") or "", t.unit("k2-display-ruhe") or ""
+    check("ExecStart=/usr/bin/cage -d -s -- %s/kiosk-start.sh" % t.KD in uk and "%s/display-ruhe.py" % t.KD in ur
+          and "/home/pi/" not in uk + ur and re.search(r"^User=pi$", uk, re.M) is not None,
+          "L Einheiten: Pfade auf ~/k2-kiosk des Benutzers umgeschrieben, kein /home/pi")
+    check(t.zustand("enabled", "k2-kiosk") == "enabled" and t.zustand("enabled", "k2-display-ruhe") == "enabled"
+          and t.zustand("enabled", "getty@tty1") == "disabled", "L k2-kiosk + k2-display-ruhe aktiviert, getty@tty1 abgeschaltet")
+    check(t.zaehler("neustarts", "k2-kiosk") == 0 and t.zaehler("neustarts", "k2-display-ruhe") == 0
+          and "startet nach dem NEUSTART" in out, "L ohne DSI-Hintergrundlicht: Anzeige nur aktiviert, nicht gestartet")
+    check(t.opt("crowsnest.conf", "cam 1", "device") == os.path.join(t.V4L, CRE) and t.zaehler("neustarts", "crowsnest") == 1,
+          "L crowsnest.conf [cam 1] device = CREALITY-Kamera (…-video-index0), crowsnest neu gestartet")
+    post = [z for z in lg if z.startswith("curl ") and " POST " in z]
+    wp = lies(t.S + ".webcam-post") if os.path.exists(t.S + ".webcam-post") else ""
+    check(len(post) == 1 and "/server/webcams/item" in post[0] and lies(t.S + ".webcams").split() == ["Bauraum"]
+          and '"service":"mjpegstreamer-adaptive"' in wp and '"stream_url":"/webcam/?action=stream"' in wp
+          and '"snapshot_url":"/webcam/?action=snapshot"' in wp, "L Moonraker: Webcam Bauraum einmal angelegt (Dienst + Adressen)", wp[:200])
+    check(t.zaehler("neustarts", "klipper") == 0 and t.zustand("enabled", "klipper") == "enabled"
+          and "*** NEUSTART NÖTIG:  sudo reboot  ***" in out and "aktiviert, startet nach dem NEUSTART" in out,
+          "L --starten bei nötigem Neustart: Klipper nur aktiviert, Hinweis NEUSTART NÖTIG")
+    check(all(re.search(r"^  %s: +\S" % w, out, re.M) for w in ("Träger", "Anzeige", "Kamera", "Freigaben"))
+          and "NICHT von install.sh abgedeckt" in out and "PSU_MAX_CURRENT" in out,
+          "L Zusammenfassung nennt Träger/Anzeige/Kamera/Freigaben und was Handarbeit bleibt")
+    check(t.opt("k2-motor.cfg", "k2_motor", "allow_write") == "False" and t.opt("printer-k2.cfg", "k2_prtouch", "allow_move") == "False",
+          "L ohne --betrieb bleiben die Freigaben auf Paketstand (gesperrt)")
+    bk = os.path.realpath(os.path.join(t.H, "k2-pi-backup", "letzte"))
+    st = lies(os.path.join(bk, "state.env"))
+    check(all(x in st for x in ("TRAEGER_GELAUFEN=1", "TRAEGER_SICHERUNG=/var/backups/k2-traeger/attrappe", "KIOSK_INSTALLIERT=1",
+                                "KIOSK_UNIT_VORHER_k2_kiosk=fehlt", "GETTY_VORHER=enabled", "KAMERA_WEBCAM_ANGELEGT=Bauraum"))
+          and os.path.isfile(os.path.join(bk, "traeger", "trockenlauf.txt")) and os.path.isfile(os.path.join(bk, "traeger", "install-traeger.txt")),
+          "L state.env + Protokolle des Träger-Skripts im Backup")
+
+    fall("M --komplett wiederholt (Träger eingerichtet; erst ohne, dann mit Display)")
+    rc, out = t.lauf("install.sh", "--komplett")
+    check(rc == 0 and t.zaehler("neustarts", "klipper") == 1 and t.zaehler("neustarts", "k2-kiosk") == 0
+          and "Anzeige: Das Bild erscheint erst nach dem Neustart" in out and "Trägerplatine: Die Anschlüsse" not in out,
+          "M Träger schon aktuell, noch kein Display: Klipper startet, Anzeige wartet auf den Neustart",
+          out[-2500:] if rc else "")
+    schreibe(os.path.join(t.BL, "10-0045"), "")
+    rc, out = t.lauf("install.sh", "--komplett")
+    check(rc == 0, "M Lauf mit Display Exit 0", out[-2500:] if rc else "")
+    check(t.zaehler("neustarts", "k2-kiosk") == 1 and t.zaehler("neustarts", "k2-display-ruhe") == 1
+          and t.zaehler("neustarts", "klipper") == 2 and "NEUSTART NÖTIG" not in out,
+          "M Display erkannt: Anzeige und Klipper gestartet, kein Neustart-Hinweis mehr")
+    snap1 = t.schnappschuss()
+    n_log = len(t.log())
+    rc, out = t.lauf("install.sh", "--komplett")
+    check(rc == 0, "M weiterer Lauf Exit 0", out[-2500:] if rc else "")
+    diff = ohne_backup(t, snap1, t.schnappschuss())
+    check(not diff, "M weiterer Lauf ändert nichts (Config, Einheiten, ~/k2-kiosk bytegleich)", ", ".join(diff)[:300])
+    neu = t.log()[n_log:]
+    check(not [z for z in neu if z.startswith("apt-get")] and not [z for z in neu if " POST " in z]
+          and t.zaehler("neustarts", "crowsnest") == 1 and t.zaehler("neustarts", "k2-kiosk") == 1
+          and lies(t.S + ".webcams").split() == ["Bauraum"],
+          "M kein weiteres apt-get, kein zweiter Webcam-Eintrag, crowsnest/Anzeige nicht neu gestartet")
+    km = lies(os.path.join(t.C, "k2-module.cfg"))
+    check(len(re.findall(r"^rs485_de\s*:", km, re.M)) == 1 and t.opt("k2-module.cfg", "k2_485", "rs485_de") == "kernel"
+          and "schon aktuell – nichts geändert" in out and "unverändert, aktiviert, läuft" in out
+          and "Webcam(s) eingetragen – unverändert" in out, "M rs485_de weiterhin genau einmal; Ausgabe meldet 'unverändert'")
+    rc, out = t.lauf("install.sh")
+    km = lies(os.path.join(t.C, "k2-module.cfg"))
+    check(rc == 0 and len(re.findall(r"^rs485_de\s*:", km, re.M)) == 1 and t.opt("k2-module.cfg", "k2_485", "serial") == "/dev/ttyAMA0"
+          and t.opt("printer-k2.cfg", "mcu", "serial") == "/dev/ttyAMA4" and t.zustand("enabled", "k2-kiosk") == "enabled",
+          "M Lauf OHNE Optionen: Anschlüsse, rs485_de: kernel und Anzeige bleiben")
+
+    fall("N Rückbau --aelteste nach --komplett")
+    rc, out = t.lauf("uninstall.sh", "--aelteste", "--ja")
+    check(rc == 0, "N uninstall.sh Exit 0", out[-2500:] if rc else "")
+    check(t.unit("k2-kiosk") is None and t.unit("k2-display-ruhe") is None and not os.path.exists(t.KD)
+          and t.zustand("enabled", "k2-kiosk") == "disabled" and t.zustand("enabled", "getty@tty1") == "enabled",
+          "N Anzeige: Einheiten und ~/k2-kiosk entfernt, getty@tty1 wieder aktiviert")
+    check(lies(t.CN) == CROWSNEST_CONF and lies(t.S + ".webcams").split() == []
+          and any(" DELETE " in z for z in t.log()), "N crowsnest.conf wie vorher, Webcam-Eintrag entfernt")
+    check("wird NICHT zurückgebaut" in out and "/var/backups/k2-traeger/attrappe" in out,
+          "N Trägerplatine: kein Rückbau, Hinweis auf die Sicherung")
+    check(not os.path.exists(os.path.join(t.C, "k2-module.cfg")) and lies(os.path.join(t.C, "printer.cfg")) == "[printer]\nkinematics: none\n",
+          "N Config-Ordner wie vor der ersten Installation")
+
+    fall("O --betrieb / Aufruf-Fehler")
+    b = Attrappe(os.path.join(wurzel, "o"))
+    vorher = b.schnappschuss()
+    rc, out = b.lauf("install.sh", "--betrieb", "--bewegung-gesperrt")
+    check(rc == 2 and "schließen sich aus" in out and b.schnappschuss() == vorher,
+          "O --betrieb mit --bewegung-gesperrt: Exit 2, nichts verändert", "rc=%d" % rc)
+    rc, out = b.lauf("install.sh", "--betrieb")
+    werte = [b.opt(*x) for x in BETRIEB_SCHALTER]
+    check(rc == 0 and werte == ["True"] * 6, "O --betrieb setzt alle sechs Freigaben auf True", str(werte) + out[-800:] * (rc != 0))
+    check("ACHTUNG --betrieb" in out and "SCHNELLSTART-K2-PLUS.md Abschnitt 5" in out and "BETRIEB=1" in
+          lies(os.path.join(os.path.realpath(os.path.join(b.H, "k2-pi-backup", "letzte")), "state.env")),
+          "O Abschluss warnt deutlich (nur für einen Drucker, der schon in Betrieb war)")
+    check(not [z for z in b.log() if z.startswith(("traeger", "apt-get", "curl"))] and b.unit("k2-kiosk") is None,
+          "O --betrieb allein fasst Träger, Anzeige und Kamera nicht an")
+    rc, out = b.lauf("install.sh")
+    check(rc == 0 and [b.opt(*x) for x in BETRIEB_SCHALTER] == ["True"] * 6,
+          "O Lauf ohne Option: die sechs Freigaben bleiben (Erhaltungslogik)")
+    rc, out = b.lauf("install.sh", "--bewegung-gesperrt")
+    check(rc == 0 and b.opt("homing.cfg", "gcode_macro _PI_FREIGABE", "variable_allow_move") == "False"
+          and b.opt("k2-motor.cfg", "k2_motor", "allow_write") == "True", "O --bewegung-gesperrt danach sperrt die Bewegung wieder")
+
+    fall("P Kamera/Träger: Sonderfälle")
+    c = Attrappe(os.path.join(wurzel, "p1"))
+    rc, out = c.lauf("install.sh", "--kamera")
+    check(rc == 0 and "keine Kamera erkannt" in out and "WARN" in out and not [z for z in c.log() if z.startswith("curl")],
+          "P1 --kamera ohne Kamera und ohne crowsnest: nur Warnung, Exit 0", out[-800:] if rc else "")
+    c2 = Attrappe(os.path.join(wurzel, "p2"))
+    c2.kamera("usb-Fremd_Kamera_TEST-video-index0", "usb-Andere_Kamera_TEST-video-index0")
+    schreibe(c2.S + ".webcams", "Vorhanden\n")
+    rc, out = c2.lauf("install.sh", "--kamera")
+    check(rc == 0 and c2.opt("crowsnest.conf", "cam 1", "device") == os.path.join(c2.V4L, "usb-Andere_Kamera_TEST-video-index0")
+          and not [z for z in c2.log() if " POST " in z] and lies(c2.S + ".webcams").split() == ["Vorhanden"],
+          "P2 ohne CREALITY-Kamera: erste (sortiert); vorhandener Webcam-Eintrag bleibt, kein zweiter")
+    c3 = Attrappe(os.path.join(wurzel, "p3"))
+    c3.kamera(CRE)
+    schreibe(c3.S + ".moonraker-aus", "")
+    rc, out = c3.lauf("install.sh", "--kamera")
+    check(rc == 0 and "nicht erreichbar" in out and c3.opt("crowsnest.conf", "cam 1", "device") == os.path.join(c3.V4L, CRE),
+          "P3 Moonraker nicht erreichbar: Gerätename eingetragen, Webcam nur Warnung")
+    d = Attrappe(os.path.join(wurzel, "p4"))
+    schreibe(d.S + ".traeger-fehler", "")
+    vorher = d.schnappschuss()
+    rc, out = d.lauf("install.sh", "--traeger")
+    check(rc != 0 and "FEHLER in Schritt [1]" in out and "Trockenlauf" in out and d.schnappschuss() == vorher
+          and [z for z in d.log() if z.startswith("traeger")] == ["traeger --trocken --benutzer pi"],
+          "P4 Trockenlauf des Träger-Skripts meldet FEHLER: Abbruch in Schritt 1, nichts verändert")
+    e = Attrappe(os.path.join(wurzel, "p5"))
+    rc, out = e.lauf("install.sh", "--traeger", "--rs485-serial", "/dev/serial/by-id/usb-TEST_RS485-if00-port0",
+                     "--main-serial", "/dev/serial/by-id/usb-TEST_Main-if00")
+    check(rc == 0 and e.opt("k2-module.cfg", "k2_485", "serial") == "/dev/serial/by-id/usb-TEST_RS485-if00-port0"
+          and e.opt("k2-module.cfg", "k2_485", "rs485_de") is None and e.opt("printer-k2.cfg", "mcu", "serial") == "/dev/serial/by-id/usb-TEST_Main-if00"
+          and e.opt("printer-k2.cfg", "mcu nozzle_mcu", "serial") == "/dev/ttyAMA2",
+          "P5 --traeger mit eigenen Anschlüssen: Angaben gewinnen, rs485_de nur beim Träger-Anschluss", out[-800:] if rc else "")
+    g = Attrappe(os.path.join(wurzel, "p6"))
+    schreibe(g.S + ".pakete", "\n".join(KIOSK_PAKETE.split()[:3]) + "\n")
+    schreibe(os.path.join(g.BL, "10-0045"), "")
+    rc, out = g.lauf("install.sh", "--kiosk")
+    check(rc == 0 and [z for z in g.log() if z.startswith("apt-get install")] == ["apt-get install -y --no-install-recommends python3-evdev"]
+          and g.zaehler("neustarts", "k2-kiosk") == 1 and g.zustand("active", "k2-display-ruhe") == "active",
+          "P6 --kiosk: nur das fehlende Paket; mit Hintergrundlicht sofort gestartet", out[-800:] if rc else "")
+    # Rückbau, wenn es die Anzeige schon VOR dem gewählten Lauf gab: Stand davor kommt zurück
+    alt_start = "#!/bin/sh\n# ältere Fassung (Attrappe)\n"
+    schreibe(os.path.join(g.KD, "kiosk-start.sh"), alt_start, 0o755)
+    rc, out = g.lauf("install.sh", "--kiosk")
+    neu_ok = open(os.path.join(g.KD, "kiosk-start.sh"), "rb").read() == open(os.path.join(KIOSK_SRC, "kiosk-start.sh"), "rb").read()
+    rc2, out2 = g.lauf("uninstall.sh", "--ja")
+    check(rc == 0 and neu_ok and rc2 == 0 and lies(os.path.join(g.KD, "kiosk-start.sh")) == alt_start
+          and g.unit("k2-kiosk") is not None and g.zustand("enabled", "k2-kiosk") == "enabled"
+          and g.zustand("enabled", "getty@tty1") == "disabled" and os.path.isfile(os.path.join(g.KD, "display-ruhe.py")),
+          "P6 Rückbau des letzten Laufs: Anzeige bestand schon vorher -> bleibt, ältere Datei kommt zurück",
+          (out + out2)[-800:] if rc or rc2 else "")
+    # Paketinhalt und Schnittstelle zum echten Träger-Skript (nur Trockenlauf, verändert nichts)
+    echt = os.path.join(TRAEGER_SRC, "install-traeger.sh")
+    fehlt = [f for f in ("install-traeger.sh", "config-txt-traeger.txt", "k2_stromausfall.py", "k2_readonly.sh",
+                         "README-traeger-alpha1.md", "can0/80-k2-can0.network") if not os.path.isfile(os.path.join(TRAEGER_SRC, f))]
+    fehlt += [f for f in KIOSK_DATEIEN + ("LIESMICH.md",) if not os.path.isfile(os.path.join(KIOSK_SRC, f))]
+    check(not fehlt, "P7 traeger-alpha1/ und kiosk/ mit den nötigen Dateien vorhanden", str(fehlt))
+    if os.path.isfile(os.path.join(HIER, "SHA256SUMS")) or os.path.isdir(os.path.join(HIER, "pi-host")):
+        muell = [os.path.join(w, f) for q in (TRAEGER_SRC, KIOSK_SRC) for w, _d, fs in os.walk(q)
+                 for f in fs if ".bak" in f or "__pycache__" in w]
+        check(not muell, "P7 Paket: keine Sicherungskopien und kein __pycache__ in traeger-alpha1/ und kiosk/", str(muell[:5]))
+    if os.path.isfile(echt):
+        r = subprocess.run(["bash", echt, "--trocken", "--benutzer", "pi"], capture_output=True, text=True, timeout=120,
+                           cwd=tempfile.gettempdir())
+        aus = r.stdout + r.stderr
+        check(r.returncode == 0 and not re.search(r"^FEHLER", aus, re.M) and re.search(r"^Sicherungen: /", aus, re.M) is not None
+              and re.search(r"^Neustart nötig", aus, re.M) is not None,
+              "P8 echtes install-traeger.sh --trocken --benutzer: Exit 0, Zeilen 'Sicherungen:'/'Neustart nötig' wie von install.sh gelesen",
+              aus[-400:])
+    uk = lies(os.path.join(KIOSK_SRC, "k2-kiosk.service"))
+    check(re.search(r"^User=pi$", uk, re.M) is not None and "/home/pi/k2-kiosk/kiosk-start.sh" in uk
+          and "/home/pi/k2-kiosk/display-ruhe.py" in lies(os.path.join(KIOSK_SRC, "k2-display-ruhe.service")),
+          "P9 Einheiten in kiosk/ haben die Stellen, die install.sh --kiosk umschreibt (User=pi, /home/pi/k2-kiosk)")
 
 
 def main():
@@ -434,6 +741,8 @@ def main():
                          "--klipper-auf-zielstand", klipper=True, env={"K2_ZIEL_COMMIT": c1})
         check(rc == 0 and "umgestellt auf" in out and k.git("rev-parse", "HEAD") == c1,
               "K3 --klipper-auf-zielstand stellt auch einen neueren Stand zurück")
+        # ============================================================ L–P
+        faelle_7b(wurzel)
     print("ERGEBNIS: %s (%d/%d ok)" % ("ok" if not fehler else "FEHLER", ok, ok + len(fehler)))
     return 1 if fehler else 0
 

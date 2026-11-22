@@ -372,9 +372,38 @@ den mitgelieferten cfg-Dateien ersetzt ein neuer Lauf durch den Paketstand (alte
 | `--bewegung-gesperrt` | `_PI_FREIGABE allow_move: False` setzen (G28/Bewegung gesperrt) – für die **Erstinbetriebnahme** empfohlen, das Paket liefert `True` |
 | `--klipper-auf-zielstand` | auch einen neueren Klipper-Stand auf `ee2c6fb` zurückstellen (Rückschritt, normalerweise nicht nötig) |
 | `--starten` | Klipper am Ende starten (sonst bleibt er gestoppt) |
+| `--traeger` | Trägerplatine Alpha 1 einrichten (Systemdateien, `can0`, Stromausfall-Wächter, Konfig-Sicherung) und die Anschlüsse `/dev/ttyAMA4`, `/dev/ttyAMA2`, `/dev/ttyAMA0` samt `rs485_de: kernel` eintragen – danach `sudo reboot` |
+| `--kiosk` | Anzeige einrichten: Mainsail im Vollbild auf dem DSI-Display, Display-Ruhe (Pakete per `apt-get`, braucht Internet) |
+| `--kamera` | Kamera einrichten: fester Gerätename in `crowsnest.conf`, Webcam „Bauraum“ in Moonraker/Mainsail |
+| `--betrieb` | alle sechs Schutzschalter aus Abschnitt 5 auf `True` – **nur** für einen Drucker, der mit diesem Aufbau schon in Betrieb war; nicht zusammen mit `--bewegung-gesperrt` |
+| `--komplett` | Kurzform für `--traeger --kiosk --kamera --starten` |
 | `--ohne-startwaechter` | Start-Wächter **nicht** einrichten (Standard: an) |
 | `--ohne-creality-bruecke` | Creality-Brücke samt nginx-Block **nicht** einrichten (Standard: an) |
 | `--ohne-moonraker-anpassung` | Moonraker-Einstellung `enable_api_key` **nicht** ändern (Standard: an) |
+
+**Alles in einem Aufruf (Trägerplatine Alpha 1, Abschnitt 1.3).** Auf einem frisch aufgesetzten Pi auf der
+Trägerplatine richtet ein einziger Aufruf auch die Trägerplatine, die Anzeige und die Kamera ein:
+
+```bash
+./install.sh --printer-cfg-ersetzen --komplett \
+  --material-db material_database.json \
+  --stock-printer-cfg stock-printer.cfg
+sudo reboot
+```
+
+- Der Pi braucht dabei Internet (Pakete für die Anzeige). **Bis zum Neustart bleibt das Display dunkel** – das ist
+  kein Fehler; den Pi nicht ausschalten, sondern am Ende `sudo reboot` ausführen. Erst nach dem Neustart gibt es die
+  Anschlüsse der Trägerplatine; Klipper startet dann von selbst.
+- `--komplett` lässt die Schutzschalter aus Abschnitt 5 **gesperrt** – richtig für einen neuen Umbau.
+- Wird nur der **Pi ersetzt oder neu aufgesetzt** und der Drucker lief mit genau diesem Aufbau schon, kommt
+  `--betrieb` dazu. Dann sind Bewegung, Motoren, Filamentbox und Antasten sofort freigegeben; die Schritte aus
+  Abschnitt 5 entfallen. Für einen neuen Umbau ist `--betrieb` falsch: Verkabelung, Motorrichtung und Sensoren sind
+  dort noch ungeprüft.
+- Nicht abgedeckt bleiben: die Kalibrierung (neu messen oder mit `--stock-printer-cfg` aus der Original-Datei
+  übernehmen), die Fachbelegung der Filamentbox (Makro `CFS_FARBEN`) und die Bootloader-Einstellung
+  `PSU_MAX_CURRENT=5000` (`pi-host/traeger-alpha1/README-traeger-alpha1.md`, Schritt 5).
+- Prüfstand: Diese vier Optionen sind bisher **nur in einer Attrappe** geprüft, mit `install.sh` am Gerät noch
+  nicht gelaufen. Einzelheiten: install-README §3a.
 
 **Dienste und Web-Anpassungen (Standard an, einzeln abschaltbar, idempotent, gesichert):**
 
@@ -423,7 +452,8 @@ Drucker und Pi in der Reihenfolge aus Abschnitt 3.6 einschalten, dann:
 
 ### 4.4 Was `install.sh` nicht übernimmt
 
-- Pi-Grundeinrichtung (MainsailOS, SSH, `sudo`) und die UART-Overlays (Abschnitt 1.2, 3.1).
+- Pi-Grundeinrichtung (MainsailOS, SSH, `sudo`) und die UART-Overlays (Abschnitt 1.2, 3.1). Ausnahme
+  Trägerplatine Alpha 1: dort übernimmt `--traeger` die Systemeinstellungen (Abschnitt 4.2).
 - Mainsail-Einstellungen: empfohlen „Not-Aus bestätigen“ und „Druck abbrechen bestätigen“ einschalten (am Handy wurde
   zweimal versehentlich abgebrochen).
 - Slicer-Profil (Abschnitt 6), Kalibrierung und Schutzschalter (Abschnitt 5).

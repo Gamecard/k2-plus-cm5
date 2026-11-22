@@ -59,6 +59,18 @@ DIENST_DATEIEN="k2_startwaechter.py k2-startwaechter.service test_k2_startwaecht
   k2_creality_bruecke.py k2-creality-bruecke.service test_k2_creality_bruecke.py
   k2web.py test_k2web.py test_k2_install.py"
 for f in $DIENST_DATEIEN; do cp "$HIER/$f" "$P/"; done
+# Trägerplatine Alpha 1 (install.sh --traeger) und Anzeige (install.sh --kiosk):
+# ganze Ordner ohne Sicherungskopien und ohne __pycache__
+TRAEGER_DATEIEN="install-traeger.sh config-txt-traeger.txt k2-traeger-ina226-overlay.dts k2_stromausfall.py
+  k2_stromausfall.default k2-stromausfall.service k2_config_sicherung.sh k2_config_sicherung.default
+  k2-config-sicherung.service k2-config-sicherung.timer k2_readonly.sh klipper-ausschnitte.cfg
+  README-traeger-alpha1.md can0/80-k2-can0.network can0/80-k2-can0.rules can0/k2-can0-nm.conf"
+KIOSK_DATEIEN="kiosk-start.sh display-ruhe.py k2-kiosk.service k2-display-ruhe.service LIESMICH.md"
+cp -r "$REPO/pi-host/traeger-alpha1" "$P/traeger-alpha1"
+mkdir -p "$P/kiosk"
+for f in $KIOSK_DATEIEN; do cp "$REPO/pi-host/kiosk/$f" "$P/kiosk/"; done
+find "$P/traeger-alpha1" "$P/kiosk" \( -name '*.bak*' -o -name '*~' \) -print -delete | sed 's#^#  ausgeschlossen: #'
+chmod 0755 "$P/traeger-alpha1/install-traeger.sh" "$P/kiosk/kiosk-start.sh" "$P/kiosk/display-ruhe.py"
 chmod 0755 "$P/install.sh" "$P/uninstall.sh" "$P/k2-identify.py" "$P/k2-bootstart.py"
 for f in "$REPO"/pi-host/k2_*.py "$REPO"/pi-host/test_k2_*.py; do cp "$f" "$P/pi-host/"; done
 cp "$REPO/pi-host/prtouch_mcu_formats.json" "$P/pi-host/"          # von test_k2_prtouch gebraucht
@@ -86,7 +98,12 @@ for f in k2-bootstart.py test_k2_bootstart.py k2-bootstart.service nachbau/boots
          pi-host/k2_konsole.py pi-host/k2_dateipruefung.py pi-host/k2_resume.py; do
   [ -f "$P/$f" ] || fehler "$f fehlt"
 done
+for f in $TRAEGER_DATEIEN; do [ -f "$P/traeger-alpha1/$f" ] || fehler "traeger-alpha1/$f fehlt"; done
+for f in $KIOSK_DATEIEN; do [ -f "$P/kiosk/$f" ] || fehler "kiosk/$f fehlt"; done
+if find "$P/traeger-alpha1" "$P/kiosk" -name '*.bak*' | grep .; then fehler "Sicherungskopie im Paket (oben)"; fi
 # Einheiten sind Vorlagen: keine festen Benutzer-/Home-Pfade
+# (kiosk/*.service nennen Benutzer pi und /home/pi/k2-kiosk für den Weg von Hand –
+#  install.sh --kiosk schreibt beides beim Einbau um; geprüft in test_k2_install.py)
 if grep -nE '/home/|^User=[^@]' "$P"/k2-*.service; then fehler "feste Pfade/Benutzer in einer Einheit (oben) – Vorlage mit @USER@/@TOOLS@/@PY@ nötig"; fi
 
 # --- Prüfungen -------------------------------------------------------
@@ -100,7 +117,10 @@ if [ -f "$LM" ]; then
 else
   echo "Hinweis: $LM fehlt – nur allgemeine Leak-Muster geprüft" >&2
 fi
-if grep -rnIiE "$MUSTER" "$P"; then
+# Kein Leak: der systemd-Einheitenname getty@tty<N>.service (kiosk/k2-kiosk.service) sieht für
+# das Mail-Muster wie eine Adresse aus. Genau dieser Name wird aus den Trefferzeilen entfernt und
+# die Zeile erneut geprüft – steht in derselben Zeile ein echtes Muster, bleibt sie ein Treffer.
+if grep -rnIiE "$MUSTER" "$P" | sed -E 's/getty@tty[0-9]+\.service//g' | grep -iE "$MUSTER"; then
   fehler "Leak-Muster im Paketinhalt (oben) – Paket NICHT gebaut"
 fi
 # Material-DB: weder dem Namen noch dem Inhalt nach (Kennfelder der Creality-DB in JSON)
@@ -122,6 +142,8 @@ for f in "$P"/*.md "$P"/pi-host/*.md "$P"/pi-host/config-pi/*.md; do
   case "$(basename "$f")" in [U]EBERGABE*|CHECKLISTE*|PI-ZUGANG*|PROTOKOLL*) fehler "unerwünschte Datei $f";; esac
 done
 bash -n "$P/install.sh"; bash -n "$P/uninstall.sh"
+bash -n "$P/traeger-alpha1/install-traeger.sh"; bash -n "$P/traeger-alpha1/k2_readonly.sh"
+sh -n "$P/traeger-alpha1/k2_config_sicherung.sh"; bash -n "$P/kiosk/kiosk-start.sh"
 python3 - "$P" <<'PY'
 import ast, os, sys
 n = 0
@@ -155,6 +177,18 @@ if [ $TESTS -eq 1 ]; then
   # Stock-SAVE_CONFIG-Übernahme (k2cfg.py); Teil C gleicht mit Upstream-configfile/bed_mesh ab
   ( cd "$P" && KLIPPER_SRC="$IKS" python3 -B "$P/test_k2cfg.py" ) > "$TMP/t.log" 2>&1 || { tail -20 "$TMP/t.log"; fehler "test_k2cfg.py rot"; }
   echo "    test_k2cfg.py: $(grep -E 'ERGEBNIS' "$TMP/t.log" | tail -1)$(grep -q 'SKIP' "$TMP/t.log" && echo ' (mit SKIP)')"
+  # Trägerplatine: Stromausfall-Wächter (im Paket) + Abgleich des Softwarepakets mit dem
+  # Schaltplan (braucht hardware/, liegt nicht im Paket -> läuft im Quellordner, sonst SKIP)
+  ( cd "$P/traeger-alpha1" && python3 -B "$P/traeger-alpha1/test_k2_stromausfall.py" ) > "$TMP/t.log" 2>&1 \
+    || { tail -20 "$TMP/t.log"; fehler "traeger-alpha1/test_k2_stromausfall.py rot"; }
+  echo "    traeger-alpha1/test_k2_stromausfall.py: $(grep -E 'ERGEBNIS|BESTANDEN|PASS' "$TMP/t.log" | tail -1)"
+  if [ -d "$REPO/hardware/k2-pi-cm5-traeger/generator" ]; then
+    ( cd "$REPO/pi-host/traeger-alpha1" && python3 -B test_traeger_config.py ) > "$TMP/t.log" 2>&1 \
+      || { tail -20 "$TMP/t.log"; fehler "traeger-alpha1/test_traeger_config.py rot"; }
+    echo "    traeger-alpha1/test_traeger_config.py (Quellordner): $(grep -E 'ERGEBNIS|BESTANDEN|PASS' "$TMP/t.log" | tail -1)"
+  else
+    echo "    traeger-alpha1/test_traeger_config.py: SKIP (hardware/ nicht vorhanden)"
+  fi
   # Dienste/Web: Logik-Tests + Attrappe für install.sh/uninstall.sh (Schritt 7, Rückbau)
   for t in test_k2web.py test_k2_startwaechter.py test_k2_creality_bruecke.py test_k2_install.py; do
     ( cd "$P" && python3 -B "$P/$t" ) > "$TMP/t.log" 2>&1 || { tail -30 "$TMP/t.log"; fehler "$t rot"; }
@@ -167,7 +201,7 @@ fi
   echo "Paket: $NAME"
   echo "Erstellt: $(date '+%Y-%m-%d %H:%M:%S %z')"
   echo "Klipper-Ziel: ee2c6fb6b00b2b5d097ef70d0868df7d74943b51 (Upstream, geprüfter Stand)"
-  echo "Inhalt: pi-host/k2_*.py, test_k2_*.py, config-pi/, nachbau/, mcu-dicts/, install.sh, uninstall.sh, k2cfg.py (+ test_k2cfg.py), k2-identify.py, k2-bootstart.py (+ .service), k2_startwaechter.py (+ .service), k2_creality_bruecke.py (+ .service), k2web.py, test_k2web.py, test_k2_install.py"
+  echo "Inhalt: pi-host/k2_*.py, test_k2_*.py, config-pi/, nachbau/, mcu-dicts/, install.sh, uninstall.sh, k2cfg.py (+ test_k2cfg.py), k2-identify.py, traeger-alpha1/ (install.sh --traeger), kiosk/ (install.sh --kiosk), k2-bootstart.py (+ .service), k2_startwaechter.py (+ .service), k2_creality_bruecke.py (+ .service), k2web.py, test_k2web.py, test_k2_install.py"
   echo "Quelldateien (sha256, Kurzform):"
   ( cd "$P" && { find pi-host nachbau -name '*.py' -o -name '*.cfg'; echo k2-identify.py; echo k2-bootstart.py; echo k2-bootstart.service;
     echo k2_startwaechter.py; echo k2-startwaechter.service; echo k2_creality_bruecke.py; echo k2-creality-bruecke.service; echo k2web.py; } | sort | xargs sha256sum | awk '{printf "  %s  %s\n", substr($1,1,12), $2}' )

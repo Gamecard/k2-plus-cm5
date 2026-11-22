@@ -328,6 +328,8 @@ def test_gpio6_26(src, werte):
         for d in dateien:
             if d.startswith("test_") or d.endswith((".pyc",)) or d == "README-traeger-alpha1.md":
                 continue
+            if ".bak" in d:      # Sicherungskopien gehören nicht zum Paket (pack.sh lässt sie weg)
+                continue
             p = os.path.join(wurzel, d)
             for i, z in enumerate(lies(p).splitlines(), 1):
                 if muster.search(z):
@@ -557,6 +559,8 @@ def test_regeln():
         if "__pycache__" in wurzel:
             continue
         for d in dateien:
+            if ".bak" in d:      # Sicherungskopien gehören nicht zum Paket (pack.sh lässt sie weg)
+                continue
             p = os.path.join(wurzel, d)
             for i, z in enumerate(lies(p).splitlines(), 1):
                 for rx, was in verboten:

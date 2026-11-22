@@ -24,7 +24,12 @@ hilfe() {
 Aufruf: ./uninstall.sh [Optionen]
   Stellt Module, Config (inkl. moonraker.conf), Klipper-Checkout, k2-bootstart,
   Start-Wächter, Creality-Brücke und den nginx-Upload-Block auf den Stand vor dem
-  gewählten install.sh-Lauf zurück.
+  gewählten install.sh-Lauf zurück. Ebenso die Anzeige (install.sh --kiosk: Dienste
+  k2-kiosk/k2-display-ruhe, ~/k2-kiosk, Anmeldung auf tty1) und den Webcam-Eintrag
+  (install.sh --kamera); crowsnest.conf kommt mit dem Config-Ordner zurück.
+  NICHT zurückgebaut wird die Trägerplatine (install.sh --traeger: config.txt-Block,
+  can0, Stromausfall-Wächter, Konfig-Sicherung) – uninstall.sh nennt dafür nur die
+  Sicherung von install-traeger.sh. Die mit --kiosk installierten Pakete bleiben.
   --backup DIR      bestimmtes Backup (~/k2-pi-backup/<stamp>) zurückspielen
   --aelteste        ältestes Backup = Zustand vor der ersten Installation
   --klipper-lassen  Klipper-Checkout NICHT auf den vorherigen Stand zurückstellen
@@ -204,6 +209,82 @@ else
     sudo -n install -m 0644 "$BK/nginx/site.vor-rueckbau" "$NS" || true
     warn "nginx -t nach dem Entfernen fehlgeschlagen – $NS unverändert gelassen (Block bitte von Hand entfernen)"
   fi
+fi
+
+schritt 3e "Anzeige (Kiosk), Webcam-Eintrag, Trägerplatine"
+# Anzeige: nur zurückbauen, was der gewählte Lauf eingerichtet hat (KIOSK_INSTALLIERT=1)
+if [ "$(st KIOSK_INSTALLIERT)" = 1 ]; then
+  KD=$(st KIOSK_DIR); [ -n "$KD" ] || KD=${KIOSK_DIR:-$HOME/k2-kiosk}
+  GD=$(st GETTY_DIENST); [ -n "$GD" ] || GD=getty@tty1
+  KRELOAD=0; KWEG=0
+  for u in k2-kiosk k2-display-ruhe; do
+    unit=$SD/$u.service
+    UV=$(st "KIOSK_UNIT_VORHER_${u//-/_}")
+    if [ -z "$UV" ] || [ "$UV" = fehlt ]; then
+      if [ -e "$unit" ]; then
+        sudo -n systemctl stop "$u.service" >/dev/null 2>&1 || true
+        sudo -n systemctl disable "$u.service" >/dev/null 2>&1 || true
+        sudo -n rm -f "$unit" || fehler "$unit nicht entfernbar"
+        KRELOAD=1; KWEG=1
+        ok "$u.service gestoppt, deaktiviert und entfernt (gab es vor diesem Lauf nicht)"
+      else
+        ok "$u.service nicht vorhanden – nichts zu tun"
+      fi
+    elif [ -f "$BK/kiosk/$u.service.vorher" ]; then
+      sudo -n install -m 0644 "$BK/kiosk/$u.service.vorher" "$unit" || fehler "$unit nicht zurückspielbar"
+      sudo -n systemctl daemon-reload || warn "systemctl daemon-reload fehlgeschlagen"
+      case "$UV" in
+        enabled)  sudo -n systemctl enable "$u.service" >/dev/null 2>&1 || warn "enable $u fehlgeschlagen" ;;
+        disabled) sudo -n systemctl disable "$u.service" >/dev/null 2>&1 || warn "disable $u fehlgeschlagen" ;;
+      esac
+      sudo -n systemctl try-restart "$u.service" >/dev/null 2>&1 || true
+      ok "$u.service auf den Stand vor diesem Lauf zurückgesetzt ($UV)"
+    else
+      warn "KIOSK_UNIT_VORHER_${u//-/_}=$UV, aber keine Kopie im Backup – $u.service unverändert"
+    fi
+  done
+  [ $KRELOAD -eq 1 ] && { sudo -n systemctl daemon-reload || warn "systemctl daemon-reload fehlgeschlagen"; }
+  for f in kiosk-start.sh display-ruhe.py; do
+    FV=$(st "KIOSK_DATEI_VORHER_${f//[.-]/_}")
+    if [ "$FV" = vorhanden ] && [ -f "$BK/kiosk/dateien/$f" ]; then
+      mkdir -p "$KD"; cp -p "$BK/kiosk/dateien/$f" "$KD/$f"; info "zurückgespielt: $KD/$f"
+    elif [ "$FV" = fehlt ] && [ -e "$KD/$f" ]; then
+      rm -f "$KD/$f"; info "entfernt: $KD/$f"
+    fi
+  done
+  rmdir "$KD" 2>/dev/null && info "leerer Ordner $KD entfernt" || true
+  # Anmeldung auf tty1 wieder an, wenn sie vor dem Lauf an war
+  if [ "$(st GETTY_VORHER)" = enabled ]; then
+    sudo -n systemctl enable "$GD.service" >/dev/null 2>&1 || warn "systemctl enable $GD fehlgeschlagen"
+    if [ $KWEG -eq 1 ]; then sudo -n systemctl start "$GD.service" >/dev/null 2>&1 || warn "systemctl start $GD fehlgeschlagen"; fi
+    ok "Anmeldung auf tty1 ($GD) wieder aktiviert"
+  fi
+  info "die mit --kiosk installierten Pakete (cage, chromium, fonts-dejavu-core, python3-evdev) bleiben installiert"
+else
+  ok "Anzeige: vom gewählten Lauf nicht eingerichtet – nichts zu tun"
+fi
+# Webcam-Eintrag in Moonraker: nur entfernen, wenn der gewählte Lauf ihn angelegt hat
+WC=$(st KAMERA_WEBCAM_ANGELEGT)
+if [ -n "$WC" ]; then
+  MU=$(st MOONRAKER_URL); [ -n "$MU" ] || MU=${MOONRAKER_URL:-http://127.0.0.1:7125}
+  if command -v curl >/dev/null 2>&1 \
+     && curl -s --max-time 10 -X DELETE -G "$MU/server/webcams/item" --data-urlencode "name=$WC" 2>/dev/null | grep -q '"webcam"'; then
+    ok "Moonraker: Webcam \"$WC\" entfernt (von diesem Lauf angelegt)"
+  else
+    warn "Moonraker: Webcam \"$WC\" nicht entfernbar (Moonraker nicht erreichbar?) – in Mainsail unter Einstellungen > Webcams löschen"
+  fi
+else
+  ok "Webcam: vom gewählten Lauf nicht angelegt – nichts zu tun"
+fi
+# Trägerplatine: KEIN automatischer Rückbau (Systemdateien außerhalb dieses Backups)
+if [ "$(st TRAEGER_GELAUFEN)" = 1 ]; then
+  warn "Trägerplatine: install-traeger.sh lief in diesem Lauf – wird NICHT zurückgebaut."
+  info "  Sicherung der geänderten Systemdateien (config.txt, can0, Dienste): $(st TRAEGER_SICHERUNG)"
+  info "  Von Hand: Dateien von dort zurückkopieren bzw. den Block K2-TRAEGER-ALPHA1 aus der config.txt"
+  info "  entfernen, Dienste k2-stromausfall und k2-config-sicherung.timer abschalten, dann sudo reboot."
+  info "  Die Anschlüsse in der Klipper-Config kommen mit dem Config-Ordner zurück (Schritt 4)."
+else
+  ok "Trägerplatine: vom gewählten Lauf nicht eingerichtet – nichts zu tun"
 fi
 
 schritt 4 "Config zurück"

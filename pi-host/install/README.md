@@ -6,6 +6,9 @@
 > Schritt 7 (Start-Wächter, Creality-Brücke, nginx, Moonraker), `--bewegung-gesperrt`, die Übernahme der
 > Freigaben und der Rückbau `uninstall.sh` sind **nur in der Attrappe** geprüft; die drei Dienst-/Web-Teile
 > laufen am Pi des Autors seit 23./24.10. – dort aber **von Hand** eingerichtet.
+> **Neu 22.11.2026:** `--traeger`, `--kiosk`, `--kamera`, `--betrieb` und die Kurzform `--komplett` (§3a) richten
+> Trägerplatine Alpha 1, Anzeige, Kamera und – auf ausdrücklichen Wunsch – die Freigaben in **einem** Aufruf ein.
+> Diese Teile sind bisher **nur in der Attrappe** geprüft, mit dem Installationsskript am Gerät noch nicht gelaufen.
 > Einstieg für Nachbauer: [`SCHNELLSTART-K2-PLUS.md`](../../SCHNELLSTART-K2-PLUS.md) (Repo-Wurzel).
 
 Richtet einen Pi (CM5, MainsailOS/Debian 13, aarch64) in **einem Schritt** ein: Upstream-Klipper auf den geprüften Stand `ee2c6fb` (ein neuerer Stand bleibt, §4), K2-Module nach `klippy/extras/`, Config nach `~/printer_data/config/`, Offline-Tests + Batch-Prüfung auf dem Pi, dazu (Standard an, abschaltbar) Start-Wächter, Creality-Brücke mit nginx-Upload-Block und die Moonraker-Einstellung für OrcaSlicer (§4e). Bewegt nichts, startet Klipper nur auf Wunsch. Grundlage: `pi-host/config-pi/README.md` §3 (Installation) und §4 (Inbetriebnahme).
@@ -31,6 +34,7 @@ Richtet einen Pi (CM5, MainsailOS/Debian 13, aarch64) in **einem Schritt** ein: 
 | `k2web.py` | Pi | Hilfswerkzeug: Moonraker `[authorization] enable_api_key: False` und nginx-Upload-Block setzen/entfernen, idempotent (§4e) |
 | `test_k2web.py` | Arbeits-PC/Pi | Offline-Test zu `k2web.py` + den beiden Dienst-Vorlagen |
 | `test_k2_install.py` | Arbeits-PC (Pi möglich) | **Attrappe** für `install.sh`/`uninstall.sh`: Fake-HOME mit git-Klipper, Fake-`/etc`, Fake-`sudo`/`systemctl`/`nginx`/`id`; Schritt 7, Idempotenz, `--ohne-*`, `--bewegung-gesperrt`, Freigaben, Klipper-Rückschritt, Rückbau (§6). Braucht `git` |
+| `../traeger-alpha1/`, `../kiosk/` | Pi | kommen als Ordner `traeger-alpha1/` und `kiosk/` mit ins Paket; `install.sh --traeger` bzw. `--kiosk` richtet sie ein (§3a) |
 
 ## 2. Paket bauen (Arbeits-PC)
 
@@ -46,7 +50,7 @@ pi-host/install/pack.sh --ohne-dicts     # ohne MCU-Dictionaries (s. u.)
 
 **Lokaler Arbeitsordner `lokal/`** (Repo-Wurzel, git-ignoriert): `lokal/pi-paket/` (Paket-Ausgabe), `lokal/mcu-dicts/` (die beiden F008-Dictionaries), `lokal/upstream-klipper/` (Klon von Upstream-Klipper; `--tests` setzt ihn als `KLIPPER_SRC`), optional `lokal/leak-muster.txt` (eigene Leak-Muster, eine ERE pro Zeile; fehlt die Datei, prüft `pack.sh` nur die allgemeinen Muster).
 
-Inhalt: `k2cfg.py` + `test_k2cfg.py`, `k2-identify.py` + `test_k2_identify.py`, `k2-bootstart.py` + `test_k2_bootstart.py` + `k2-bootstart.service`, Start-Wächter, Creality-Brücke, `k2web.py` (je mit Test, §1), `test_k2_install.py`, `pi-host/k2_*.py` (alle, z. B. `k2_konsole.py` – Pflicht für die übrigen Module –, `k2_dateipruefung.py`, `k2_resume.py`, `k2_cfs_sensor.py`, `k2_heater_pid.py`, `k2_lis2dw.py`), `pi-host/test_k2_*.py` (+ `prtouch_mcu_formats.json`, Modul-READMEs), `pi-host/config-pi/` (cfg + README), `nachbau/` (+ `ref-hi/`), `belt_mdl-live.py` (GPLv3-Original für den Belt-Vergleichstest), `mcu-dicts/` (F008-Dictionaries Main/Düse für Batch + lis2dw-Test, s. o.), Skripte, `PAKET-INFO.txt`, `SHA256SUMS`. `pack.sh` prüft außerdem, dass die Dienst-Einheiten Vorlagen ohne feste Pfade/Benutzer sind.
+Inhalt: `traeger-alpha1/` (Softwarepaket der Trägerplatine, für `--traeger`) und `kiosk/` (Anzeige, für `--kiosk`) – jeweils ohne Sicherungskopien –, `k2cfg.py` + `test_k2cfg.py`, `k2-identify.py` + `test_k2_identify.py`, `k2-bootstart.py` + `test_k2_bootstart.py` + `k2-bootstart.service`, Start-Wächter, Creality-Brücke, `k2web.py` (je mit Test, §1), `test_k2_install.py`, `pi-host/k2_*.py` (alle, z. B. `k2_konsole.py` – Pflicht für die übrigen Module –, `k2_dateipruefung.py`, `k2_resume.py`, `k2_cfs_sensor.py`, `k2_heater_pid.py`, `k2_lis2dw.py`), `pi-host/test_k2_*.py` (+ `prtouch_mcu_formats.json`, Modul-READMEs), `pi-host/config-pi/` (cfg + README), `nachbau/` (+ `ref-hi/`), `belt_mdl-live.py` (GPLv3-Original für den Belt-Vergleichstest), `mcu-dicts/` (F008-Dictionaries Main/Düse für Batch + lis2dw-Test, s. o.), Skripte, `PAKET-INFO.txt`, `SHA256SUMS`. `pack.sh` prüft außerdem, dass die Dienst-Einheiten Vorlagen ohne feste Pfade/Benutzer sind.
 **Nicht** enthalten: Logs, Arbeits-/Zugangsnotizen, **Creality-Materialdatenbank** (`material_database*.json`, s. §4a), **Düsen-Material-Zustand** (`remain_material*.json`, s. §4a). `pack.sh` bricht bei Zugangsdaten-/IP-Mustern im Inhalt ab, ebenso wenn eine Material-DB dem Namen nach (Paketordner und Tarball) oder dem Inhalt nach (JSON mit `meterialType`/`printerIntName`/`kvParam`) hineingeriete; dasselbe für `remain_material*.json` (Name bzw. JSON mit Schlüssel `"remain_material"`) und für eine **Stock-`printer.cfg`** (Datei mit SAVE_CONFIG-Abschnitt `#*# [auto_addr]` = Geräte-Kennungen, s. §4d).
 
 ## 3. Auf den Pi kopieren und starten
@@ -74,6 +78,65 @@ sudo systemctl start klipper                     # oder gleich mit --starten
 
 Variante A (Rückfallweg, Main-MCU über USB-RS232-Konverter an J22): `--main-serial /dev/serial/by-id/usb-FTDI_...-if00-port0`.
 
+## 3a. Alles in einem Aufruf (Trägerplatine Alpha 1)
+
+Für einen frisch aufgesetzten Pi (MainsailOS) auf der **Trägerplatine Alpha 1** mit DSI-Display und USB-Kamera.
+Der Pi braucht dafür Netz (WLAN oder LAN) und Internet (apt-get für die Anzeige-Pakete).
+
+```bash
+tar xzf k2-pi-paket-<datum>.tar.gz && cd k2-pi-paket-<datum>
+./install.sh --printer-cfg-ersetzen --komplett \
+  --material-db material_database.json \
+  --stock-printer-cfg printer-original.cfg
+sudo reboot                      # nötig: die Anschlüsse der Trägerplatine gibt es erst danach
+```
+
+`--komplett` ist die Kurzform für `--traeger --kiosk --kamera --starten`:
+
+| Teil | Was passiert | Geprüft wird vorher (Schritt 1, noch nichts verändert) |
+|---|---|---|
+| `--traeger` | `traeger-alpha1/install-traeger.sh` läuft mit `sudo`: Block in der `config.txt` (UARTs, RS485, CAN, Strommessung, Display), `can0`, Stromausfall-Wächter, tägliche Konfig-Sicherung. Dazu die Anschlüsse in der Klipper-Config, soweit nicht mit `--main-serial`/`--duese-serial`/`--rs485-serial` angegeben: `[mcu] serial: /dev/ttyAMA4`, `[mcu nozzle_mcu] serial: /dev/ttyAMA2`, `[k2_485] serial: /dev/ttyAMA0` und dort `rs485_de: kernel` (genau einmal, hinter `serial:`). | Plattform ist ein Compute Module 5; Trockenlauf `install-traeger.sh --trocken` – meldet er eine `FEHLER`-Zeile oder endet er mit Fehler, bricht `install.sh` ab |
+| `--kiosk` | Fehlende Pakete `cage chromium fonts-dejavu-core python3-evdev` per `apt-get install --no-install-recommends`; `kiosk-start.sh` und `display-ruhe.py` nach `~/k2-kiosk/`; Einheiten `k2-kiosk.service` und `k2-display-ruhe.service` nach `/etc/systemd/system/` (Benutzer und Ordner auf den aufrufenden Benutzer umgeschrieben), beide aktiviert; Anmeldung auf tty1 (`getty@tty1`) abgeschaltet. Sofort gestartet wird nur, wenn unter `/sys/class/backlight` schon ein Hintergrundlicht steht – sonst nach dem Neustart. | Dateien im Paket vorhanden, `apt-get` vorhanden, Gruppen `video`/`render`/`input` (nur Warnung) |
+| `--kamera` | `crowsnest.conf`: `[cam 1] device` auf den festen Namen unter `/dev/v4l/by-id/` (`…-video-index0`; bei mehreren Kameras die mit `CREALITY` im Namen, sonst die erste), danach `crowsnest` neu gestartet. In Moonraker wird die Webcam „Bauraum“ angelegt (`/webcam/?action=stream`, `/webcam/?action=snapshot`, Dienst `mjpegstreamer-adaptive`) – nur wenn dort noch **keine** Webcam eingetragen ist. Ohne Kamera, ohne `crowsnest.conf` oder ohne erreichbares Moonraker: Warnung, kein Abbruch. | – |
+| `--starten` | Klipper am Ende starten. Verlangt die Trägerplatine in diesem Lauf einen Neustart, wird Klipper nur aktiviert und startet nach `sudo reboot` von selbst. | – |
+
+Am Ende meldet `install.sh` deutlich **NEUSTART NÖTIG**. Bis zum Neustart bleibt das Display dunkel – das ist kein
+Fehler; den Pi deshalb nicht vom Strom trennen. Ein zweiter Aufruf mit denselben Optionen ändert nichts mehr
+(keine doppelte Zeile, kein zweiter Webcam-Eintrag, kein weiteres `apt-get`).
+
+**Freigaben (`--betrieb`).** Das Paket liefert die Schalter für Motoren, Filamentbox und Antasten **gesperrt**
+(Erstinbetriebnahme nach `SCHNELLSTART-K2-PLUS.md` Abschnitt 5). `--betrieb` setzt sie in einem Zug auf Betriebsstand:
+
+| Datei | Abschnitt | Option | Wert |
+|---|---|---|---|
+| `homing.cfg` | `[gcode_macro _PI_FREIGABE]` | `variable_allow_move` | `True` |
+| `k2-motor.cfg` | `[k2_motor]` | `allow_write`, `auto_init` | `True` |
+| `k2-module.cfg` | `[k2_box]` | `allow_write`, `allow_move` | `True` |
+| `printer.cfg` | `[k2_prtouch]` | `allow_move` | `True` |
+
+> **Nur für einen Drucker, der mit genau diesem Aufbau schon in Betrieb war** – zum Beispiel, wenn der Pi ersetzt
+> oder neu aufgesetzt wird. Bei einem neuen Umbau sind Verkabelung, Motorrichtung und Sensoren ungeprüft; dort ohne
+> `--betrieb` installieren und die Schritte aus dem Schnellstart einzeln durchgehen. `--betrieb` zusammen mit
+> `--bewegung-gesperrt` ist ein Aufruf-Fehler (Exit 2). Einmal gesetzte Freigaben bleiben bei späteren Läufen
+> ohne Option erhalten (wie bisher).
+
+```bash
+# Ersatz-Pi für einen Drucker, der schon lief – alles in einem Aufruf:
+./install.sh --printer-cfg-ersetzen --komplett --betrieb \
+  --material-db material_database.json \
+  --stock-printer-cfg printer-original.cfg
+sudo reboot
+```
+
+**Nicht abgedeckt** (bleibt Handarbeit, `install.sh` nennt es am Ende):
+
+- **Kalibrierung** (Bettnetz, Temperaturregelung, Schwingungsdämpfung, Schnittposition): neu messen oder mit
+  `--stock-printer-cfg` die Werte aus der Original-`printer.cfg` übernehmen (§4d). Werte, die nur auf einem
+  früheren Pi lagen, kommen nicht von selbst mit.
+- **Fachbelegung der Filamentbox** (Material und Farbe je Fach): Makro `CFS_FARBEN` in Mainsail.
+- **Bootloader-Einstellung `PSU_MAX_CURRENT=5000`** (`traeger-alpha1/README-traeger-alpha1.md`, Schritt 5).
+- Schreibgeschütztes System und Datenpartition (`README-traeger-alpha1.md`, Teil C) sowie der WLAN-Zugang.
+
 ## 4. Was `install.sh` tut
 
 | Schritt | Inhalt | Abbruch bei |
@@ -85,10 +148,12 @@ Variante A (Rückfallweg, Main-MCU über USB-RS232-Konverter an J22): `--main-se
 | 5 Config | `~/printer_data/config` **komplett** als `config.tar.gz` gesichert; alle `config-pi/*.cfg` außer `printer.cfg` kopiert; `printer.cfg`: keine vorhanden → wird `printer.cfg`; vorhanden → nur mit `--printer-cfg-ersetzen` ersetzt, sonst `printer-k2.cfg` daneben + Hinweis; mit `--stock-printer-cfg` danach Kalibrierwerte in den SAVE_CONFIG-Block dieser Hauptdatei (§4d, Protokoll `<backup>/stock-import.txt`); mit `--bewegung-gesperrt` danach `homing.cfg` `_PI_FREIGABE variable_allow_move: False`; Material-DB s. §4a | Stock-Übernahme scheitert (Ziel-Block beschädigt) |
 | 6 Prüfung | alle `test_k2_*.py` (mit `KLIPPER_SRC=~/klipper`) + `test_k2_identify.py` + `test_k2_bootstart.py` + `test_k2cfg.py` + `test_k2web.py` + `test_k2_startwaechter.py` + `test_k2_creality_bruecke.py`, nachbau-Selbsttests (inkl. `bootstart`), Batch-Lauf `klippy.py <cfg> -i /dev/null -d <dicts>` (wie Lauf F der Offline-Prüfung) gegen die **installierten** Module + Config; Logs in `<backup>/tests/`, `<backup>/batch/` | ein Test rot / Batch ≠ EXIT 0 → Dienst bleibt gestoppt |
 | 7 Dienste/Web | (§4e, je abschaltbar) Moonraker `enable_api_key: False` (+ Neustart nur bei Änderung); nginx-Upload-Block vor `location /websocket` (Sicherung, `nginx -t`, `reload`); Start-Wächter + Creality-Brücke: Programm nach `~/k2-tools/`, Einheit aus Vorlage nach `/etc/systemd/system/`, `enable`, (Neu-)Start nur bei Änderung oder wenn sie nicht laufen. Vorher-Zustand in `state.env`, Kopien in `<backup>/{moonraker,nginx,dienste,k2-tools}/` | `nginx -t` scheitert (Original wird zurückgespielt), Einheit/`enable`/`restart` scheitert |
+| 7b Träger/Anzeige/Kamera | (§3a, nur mit Option) `--traeger`: `install-traeger.sh` (Protokoll im Backup unter `traeger/`); `--kiosk`: Pakete, `~/k2-kiosk/`, Einheiten, `getty@tty1` aus; `--kamera`: `crowsnest.conf` + Webcam-Eintrag in Moonraker | `install-traeger.sh` schlägt fehl; `apt-get install` schlägt fehl; Einheit nicht installierbar (Kamera: nur Warnungen) |
 | 8 Abschluss | nur mit `--bootstart`: Trockenlauf mit den Ports aus der Config, Werkzeug nach `~/k2-bootstart/`, Einheit nach `/etc/systemd/system/` + `enable` (§4c); mit `--bootstart-aus`: `disable`. Dienst nur mit `--starten`; Zusammenfassung, `ls -l /dev/serial/by-id/`, verbleibende Platzhalter, nächste Schritte §4 | `--bootstart`, aber in der Config nur Platzhalter-Ports (nichts an der Einheit verändert) |
 
 **Erneut ausführen** ist ausdrücklich vorgesehen (z. B. nach neuem Paket): eingetragene `serial:`-Pfade (`[mcu]`, `[mcu nozzle_mcu]`, `[k2_485]`) werden aus den bisherigen Dateien übernommen, ebenso von Hand gesetzte **Inbetriebnahme-Schalter** (`allow_write`/`allow_move` in `[k2_box]`, `[k2_motor]`, `[k2_prtouch]`, `[k2_belt mdlx/mdly]`, `variable_allow_move` in `[gcode_macro _PI_FREIGABE]`, `[k2_motor] auto_init`/`stall_monitor`; jede Übernahme wird gemeldet) – ein neuer Lauf setzt einen in Betrieb genommenen Drucker also nicht auf „gesperrt“ zurück. Andere Handänderungen in `config-pi`-Dateien (Makros, Grenzen …) werden durch den Paketstand ersetzt (alte Datei im Backup); beim Ersetzen einer bisherigen K2-`printer.cfg` bleibt deren SAVE_CONFIG-Block (Kalibrierung) erhalten, außer mit `--save-config-aus-paket`. Kalibrierwerte der **Stock**-`printer.cfg` kommen nur mit `--stock-printer-cfg` hinzu (§4d); im Pi abweichend kalibrierte Werte bleiben dabei, außer mit `--stock-ueberschreiben`. Jeder Lauf legt ein neues Backup an (zwei Läufe in derselben Sekunde: Suffix `-2`, `-3` …; vor dem 17.10.2026 überschrieb der zweite das erste).
 
+Ebenso bleibt eine aktive Zeile `rs485_de:` in `[k2_485]` erhalten (das Paket führt sie nicht; `--traeger` trägt `rs485_de: kernel` ein) – sie stünde sonst nach jedem weiteren Lauf nicht mehr in der Datei.
 ### Optionen
 
 | Option | Wirkung |
@@ -110,12 +175,18 @@ Variante A (Rückfallweg, Main-MCU über USB-RS232-Konverter an J22): `--main-se
 | `--ohne-creality-bruecke` | Creality-Brücke **und** nginx-Upload-Block nicht einrichten/ändern (Standard: einrichten, §4e) |
 | `--ohne-moonraker-anpassung` | `moonraker.conf` nicht ändern (Standard: `enable_api_key: False`, §4e) |
 | `--bewegung-gesperrt` | `homing.cfg` `_PI_FREIGABE variable_allow_move: False` (G28/Bewegung gesperrt; Freigabe zur Laufzeit mit `ALLOW_MOTION`). Empfohlen für die **Erst**-Inbetriebnahme – das Paket liefert `True` (Stand des Autors nach der Inbetriebnahme). Bleibt bei späteren Läufen erhalten |
+| `--traeger` | Trägerplatine Alpha 1 einrichten und Anschlüsse `/dev/ttyAMA4`/`2`/`0` + `rs485_de: kernel` eintragen; danach Neustart nötig (§3a) |
+| `--kiosk` | Anzeige: Mainsail im Vollbild auf dem DSI-Display (`cage` + Chromium), Display-Ruhe; Pakete per `apt-get` (§3a) |
+| `--kamera` | `crowsnest.conf` auf festen Gerätenamen, Webcam „Bauraum“ in Moonraker (§3a) |
+| `--betrieb` | die sechs Freigaben auf `True` – **nur** für einen Drucker, der mit diesem Aufbau schon lief (§3a); nicht mit `--bewegung-gesperrt` |
+| `--komplett` | Kurzform für `--traeger --kiosk --kamera --starten` |
 | `--dienst NAME` | anderer systemd-Dienst als `klipper` |
 | `--starten` | Klipper am Ende starten |
 | `--ohne-tests` / `--ohne-batch` | Prüfungen auslassen |
 | `--arch-egal` | nur für Probeläufe auf x86_64 |
 
 Umgebungsvariablen für abweichende Installationen: `KLIPPER_DIR`, `CONFIG_DIR`, `KLIPPY_ENV`, `BACKUP_ROOT`, `BOOTSTART_DIR` (Werkzeugordner für `--bootstart`, Standard `~/k2-bootstart`), `K2_TOOLS_DIR` (Standard `~/k2-tools`), `MOONRAKER_CONF` (Standard `~/printer_data/config/moonraker.conf`), `MOONRAKER_ENV` (`~/moonraker-env`), `MOONRAKER_DIENST` (`moonraker`), `NGINX_SITE` (`/etc/nginx/sites-available/mainsail`), `NGINX_BIN`, `NGINX_DIENST` (`nginx`), `SYSTEMD_DIR` (`/etc/systemd/system`). Nur für die Attrappe: `BOOTSTART_UNIT`, `K2_ZIEL_COMMIT`.
+Für Schritt 7b zusätzlich: `KIOSK_DIR` (Standard `~/k2-kiosk`), `CROWSNEST_CONF` (Standard `~/printer_data/config/crowsnest.conf`), `CROWSNEST_DIENST` (Standard `crowsnest`), `MOONRAKER_URL` (Standard `http://127.0.0.1:7125`).
 
 ### Wo die Port-Namen hinkommen
 
@@ -315,6 +386,15 @@ Stoppt Klipper, entfernt alle `extras/k2_*.py` + `k2_nachbau/` und spielt die ge
 
 Start-Wächter und Creality-Brücke (§4e) ebenso: gab es die Einheit vor dem gewählten Lauf nicht, wird eine Paket-Einheit (Marke `# k2-pi-paket: …` in Zeile 1) gestoppt, deaktiviert und entfernt, samt Programm in `~/k2-tools/` (leerer Ordner wird gelöscht); sonst kommen Einheit, Programm und Aktivierungszustand aus dem Backup zurück. Von Hand eingerichtete Einheiten ohne Marke bleiben unberührt. Der nginx-Upload-Block wird entfernt, wenn er vor dem gewählten Lauf nicht da war (nur der Block mit Paketmarken; danach `nginx -t` + `reload`, bei Fehler bleibt die Datei unverändert + Warnung). `moonraker.conf` liegt im Config-Ordner und kommt mit `config.tar.gz` zurück (außerhalb: eigene Sicherung des Laufs); hat sie sich dadurch geändert, wird Moonraker neu gestartet.
 
+Anzeige, Kamera, Trägerplatine (§3a):
+- **Anzeige:** Hat der gewählte Lauf sie eingerichtet, werden `k2-kiosk.service` und `k2-display-ruhe.service` gestoppt,
+  deaktiviert und entfernt (bzw. auf den gesicherten Stand zurückgesetzt), `~/k2-kiosk/` aufgeräumt und die Anmeldung
+  auf tty1 wieder aktiviert, wenn sie vorher aktiv war. Die installierten Pakete bleiben.
+- **Kamera:** `crowsnest.conf` kommt mit dem Config-Ordner zurück; der Webcam-Eintrag wird nur gelöscht, wenn der
+  gewählte Lauf ihn angelegt hat.
+- **Trägerplatine: kein automatischer Rückbau.** `install-traeger.sh` ändert Systemdateien (`config.txt`, `can0`,
+  Dienste) und sichert sie selbst unter `/var/backups/k2-traeger/<zeit>/`. `uninstall.sh` nennt diesen Ordner und
+  die Handgriffe; der Rückweg steht in `traeger-alpha1/README-traeger-alpha1.md` (Teil D).
 Startet Klipper nur mit `--starten`. Eine Kopie von `uninstall.sh` und `k2web.py` liegt in jedem Backup-Ordner.
 
 ## 6. Hinweise / ANNAHMEN
@@ -336,6 +416,7 @@ Startet Klipper nur mit `--starten`. Eine Kopie von `uninstall.sh` und `k2web.py
 | Schritt 7: Start-Wächter, Creality-Brücke + nginx-Block, Moonraker `enable_api_key` | Funktion **ja** (seit 23./24.10. von Hand eingerichtet und in Betrieb) – Einbau **durch install.sh nein** | `test_k2_install.py` (Fälle A–G), `test_k2web.py`, `test_k2_startwaechter.py`, `test_k2_creality_bruecke.py` |
 | `--bewegung-gesperrt`, Übernahme der Freigaben `allow_*`, kein Klipper-Rückschritt | nein | `test_k2_install.py` (C, K), `test_k2cfg.py` Teil D |
 | Rückbau `uninstall.sh` (inkl. Dienste/nginx/Moonraker) | **nein** | `test_k2_install.py` (E, F, G3, K), Attrappe 17.10. |
+| Schritt 7b (22.11.2026): `--traeger`, `--kiosk`, `--kamera`, `--komplett`, `--betrieb`, Erhalt von `rs485_de`, Rückbau der Anzeige | **nein** – die einzelnen Handgriffe (Träger-Skript, Anschlüsse, Kiosk, Kamera) wurden an einem Gerät von Hand ausgeführt, der Einbau **durch install.sh** ist dort nicht gelaufen | `test_k2_install.py` (Fälle L–P; `install-traeger.sh`, `apt-get`, `dpkg`, `curl` als Attrappen, das echte Träger-Skript nur im Trockenlauf), `test_k2cfg.py` (D6, D7) |
 
 Seit dem 22.10.2026 wurde der Pi des Autors **von Hand** weiterentwickelt (Module direkt nach `extras/` kopiert, Config-Dateien geändert, Dienste eingerichtet). Ob ein Neuinstallations-Lauf mit dem heutigen Paket exakt diesen Stand ergibt, ist erst nach einem Abgleich Pi ↔ `config-pi/` belegt (am 24.10. nicht möglich, Pi nicht erreichbar).
 

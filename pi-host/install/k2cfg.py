@@ -17,6 +17,11 @@ Unterbefehle:
           Zeile in NEU und ALT aktiv und weicht ALT ab (von Hand angepasst),
           bleibt der Wert aus ALT (KEEP_OPTIONS); eine in ALT auskommentierte/
           fehlende Zeile übernimmt den Paketwert;
+        * Zusatzzeilen, die das Paket nicht führt (EXTRA_OPTIONS, zurzeit
+          ``rs485_de`` in [k2_485] – Träger Alpha 1: ``rs485_de: kernel``):
+          steht die Zeile in ALT aktiv und in NEU nicht, wird sie hinter der
+          ``serial:``-Zeile wieder eingefügt (sonst ginge sie bei jedem
+          weiteren install.sh-Lauf verloren);
         * den SAVE_CONFIG-Block aus ALT (Kalibrierwerte), wenn ALT eine
           K2-Konfiguration ist und der Block abweicht – außer mit
           --save-config-aus-paket.
@@ -28,6 +33,15 @@ Unterbefehle:
       --bewegung-gesperrt: ``setze homing.cfg "gcode_macro _PI_FREIGABE"
       variable_allow_move False``. Exit 0 = gesetzt oder schon gleich,
       3 = Option im Abschnitt nicht gefunden (Datei unverändert).
+
+  einfuegen DATEI ABSCHNITT OPTION WERT [--nach OPTION]
+      Wie ``setze``, legt die Zeile aber an, wenn der Abschnitt sie nicht aktiv
+      enthält: hinter der ersten aktiven Zeile ``--nach`` (Standard ``serial``),
+      sonst direkt hinter dem Abschnittskopf. Danach steht ``OPTION: WERT``
+      genau einmal aktiv im Abschnitt (nur Hauptteil, nicht SAVE_CONFIG), z. B.
+      für install.sh --traeger: ``einfuegen k2-module.cfg k2_485 rs485_de
+      kernel``. Exit 0 = gesetzt/eingefügt/schon gleich, 3 = Abschnitt fehlt
+      (Datei unverändert).
 
   platzhalter DATEI ...
       Listet Abschnitte, deren ``serial:`` noch ein Platzhalter ist, mit
@@ -86,7 +100,8 @@ SERIAL_HINWEIS = {
            "Port zeigt ./k2-identify.py",
     "mcu nozzle_mcu": "Düsen-MCU: Variante B Pi-UART2 /dev/ttyAMA2 (Overlay uart2-pi5); "
                       "./k2-identify.py erkennt sie",
-    "k2_485": "USB-RS485-Adapter (CFS/Motoren/Belt), /dev/serial/by-id/usb-...",
+    "k2_485": "USB-RS485-Adapter (CFS/Motoren/Belt), /dev/serial/by-id/usb-...; "
+              "Trägerplatine Alpha 1: /dev/ttyAMA0 mit rs485_de: kernel (install.sh --traeger)",
 }
 # Weitere Optionen, deren Wert bei Wiederholung aus ALT erhalten bleibt: Pfad der
 # Material-DB und die Freigaben (allow_*), die nach der Inbetriebnahme von Hand
@@ -101,8 +116,46 @@ KEEP_OPTIONS = (("k2_box", "material_database"),
                 ("k2_belt mdly", "allow_write"), ("k2_belt mdly", "allow_move"))
 
 
+# Zeilen, die das Paket nicht aktiv führt, die aber erhalten bleiben müssen, wenn
+# sie in der bisherigen Datei aktiv stehen: (abschnitt, schlüssel, einfügen nach).
+# rs485_de: kernel schaltet auf der Trägerplatine Alpha 1 die Senderichtung über
+# den Kernel (install.sh --traeger bzw. von Hand, README-traeger-alpha1.md).
+EXTRA_OPTIONS = (("k2_485", "rs485_de", "serial"),)
+
+
 def _opt_re(key):
     return re.compile(r"^(" + re.escape(key) + r"\s*[:=]\s*)(\S.*?)\s*$")
+
+
+def insert_option(text, sec, key, value, nach="serial"):
+    """Setzt ``key: value`` im Abschnitt [sec] (nur Hauptteil); legt die Zeile an,
+    wenn sie dort nicht aktiv steht. Rückgabe (text, status) mit status
+    "gleich" | "gesetzt" | "eingefuegt" | "kein_abschnitt"."""
+    if (sec, key) in options(text, ((sec, key),)):
+        text, changed = set_options(text, {(sec, key): value})
+        return text, ("gesetzt" if changed else "gleich")
+    body, save = split_save_config(text)
+    lines = body.splitlines(True)
+    kopf = None          # Index der Abschnittszeile
+    hinter = None        # Index der Zeile, hinter der eingefügt wird
+    cur = None
+    for i, line in enumerate(lines):
+        m = _SEC_RE.match(line.rstrip("\n"))
+        if m:
+            cur = m.group(1).strip()
+            if cur == sec and kopf is None:
+                kopf = i
+            continue
+        if cur == sec and kopf is not None and hinter is None and nach \
+                and _opt_re(nach).match(line.rstrip("\n")):
+            hinter = i
+    if kopf is None:
+        return text, "kein_abschnitt"
+    pos = (hinter if hinter is not None else kopf) + 1
+    if pos > 0 and not lines[pos - 1].endswith("\n"):
+        lines[pos - 1] += "\n"
+    lines.insert(pos, "%s: %s\n" % (key, value))
+    return "".join(lines) + save, "eingefuegt"
 
 
 def options(text, wanted=KEEP_OPTIONS):
@@ -211,6 +264,8 @@ def serial_warnungen(sec, val):
         res.append("[%s] serial %s ist kein /dev/-Pfad" % (sec, val))
     elif re.match(r"/dev/ttyAMA\d+$", val) and sec != "k2_485":
         pass        # Pi-UART (Variante B): fester Name über das DT-Overlay
+    elif sec == "k2_485" and val == "/dev/ttyAMA0":
+        pass        # Trägerplatine Alpha 1: RS485 an UART0 (Overlay uart0-pi5,rs485)
     elif not val.startswith("/dev/serial/by-id/"):
         res.append("[%s] serial %s ist kein /dev/serial/by-id/-Pfad "
                    "(ttyUSBn kann sich beim Neustart ändern)" % (sec, val))
@@ -281,6 +336,12 @@ def cmd_merge(args):
                 print("  [%s] %s <- %s (bisherige Datei, Paket: %s)"
                       % (k[0], k[1], old, neu_opts[k]))
         text, _changed = set_options(text, keep)
+        for sec, key, nach in EXTRA_OPTIONS:
+            old = options(alt_text, ((sec, key),)).get((sec, key))
+            if old and PLACEHOLDER not in old and (sec, key) not in options(text, ((sec, key),)):
+                text, st = insert_option(text, sec, key, old, nach)
+                if st == "eingefuegt":
+                    print("  [%s] %s <- %s (bisherige Datei, im Paket nicht gesetzt)" % (sec, key, old))
 
     if alt_text is not None and is_k2_config(alt_text):
         _b, save_alt = split_save_config(alt_text)
@@ -316,6 +377,29 @@ def cmd_setze(args):
         print("  [%s] %s <- %s" % (sec, key, wert))
     else:
         print("  [%s] %s = %s (unverändert)" % (sec, key, wert))
+    return 0
+
+
+def cmd_einfuegen(args):
+    nach = "serial"
+    if len(args) == 6 and args[4] == "--nach":
+        nach = args[5]
+        args = args[:4]
+    if len(args) != 4:
+        raise SystemExit("einfuegen: DATEI ABSCHNITT OPTION WERT [--nach OPTION]")
+    pfad, sec, key, wert = args
+    text, status = insert_option(_read(pfad), sec, key, wert, nach)
+    if status == "kein_abschnitt":
+        print("  [%s] nicht gefunden – %s unverändert" % (sec, pfad))
+        return 3
+    if status == "gleich":
+        print("  [%s] %s = %s (unverändert)" % (sec, key, wert))
+        return 0
+    tmp = pfad + ".k2tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.replace(tmp, pfad)
+    print("  [%s] %s <- %s%s" % (sec, key, wert, " (Zeile angelegt)" if status == "eingefuegt" else ""))
     return 0
 
 
@@ -965,6 +1049,8 @@ def main(argv):
         return cmd_platzhalter(args)
     if cmd == "setze":
         return cmd_setze(args)
+    if cmd == "einfuegen":
+        return cmd_einfuegen(args)
     if cmd == "stock-pruefen":
         return cmd_stock_pruefen(args)
     if cmd == "stock-uebernehmen":
