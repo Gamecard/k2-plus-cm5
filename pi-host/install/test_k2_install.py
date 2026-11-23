@@ -23,6 +23,7 @@ Läuft install.sh mit --arch-egal --ohne-tests --ohne-batch --klipper-nicht-anfa
 Aufruf: python3 test_k2_install.py   (Exit 0 = alles grün)
 """
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -222,6 +223,9 @@ class Attrappe:
             os.makedirs(os.path.join(self.P, "kiosk"), exist_ok=True)
             shutil.copy2(os.path.join(KIOSK_SRC, f), os.path.join(self.P, "kiosk", f))
         schreibe(os.path.join(self.P, "traeger-alpha1", "install-traeger.sh"), FAKE_TRAEGER, 0o755)
+        for f in ("index.html", "navi.json"):
+            os.makedirs(os.path.join(self.P, "cfs-faecher"), exist_ok=True)
+            shutil.copy2(os.path.join(PIHOST, "cfs-faecher", f), os.path.join(self.P, "cfs-faecher", f))
         zeilen = []
         for wurzel, _d, dateien in os.walk(self.P):
             for f in dateien:
@@ -258,7 +262,9 @@ class Attrappe:
         self.env = {"HOME": self.H, "PATH": self.B + ":/usr/bin:/bin", "LANG": "C.UTF-8",
                     "FAKE_STATE": self.S, "SYSTEMD_DIR": self.SD, "NGINX_SITE": self.NS,
                     "BOOTSTART_UNIT": os.path.join(self.SD, "k2-bootstart.service"),
-                    "BACKLIGHT_DIR": self.BL, "V4L_BYID_DIR": self.V4L, "MOONRAKER_VERSUCHE": "1"}
+                    "BACKLIGHT_DIR": self.BL, "V4L_BYID_DIR": self.V4L, "MOONRAKER_VERSUCHE": "1",
+                    # nichts lauscht dort: Mainsail-Abfragen -> „nicht erreichbar“ (WARN), kein echter Moonraker
+                    "MOONRAKER_URL": "http://127.0.0.1:9"}
 
     def kamera(self, *namen, crowsnest=True):
         """Kameras unter der by-id-Attrappe anlegen (+ crowsnest.conf und -Dienst)."""
@@ -580,7 +586,16 @@ def main():
         ng = lies(a.NS)
         check(ng.count("location ~ ^/upload/") == 1 and ng.index("location ~ ^/upload/") < ng.index("location /websocket"),
               "A nginx: genau ein Upload-Block, vor location /websocket")
-        check(a.zaehler("reloads", "nginx") == 1, "A nginx einmal neu geladen (nach nginx -t)")
+        check(a.zaehler("reloads", "nginx") == 2, "A nginx zweimal neu geladen (Upload-Block, dann /cfs/; je nach nginx -t)")
+        check(ng.count("location /cfs/") == 1 and ng.index("location /cfs/") < ng.index("location /websocket")
+              and ("alias %s/cfs-faecher/;" % a.H) in ng and "# k2-pi-paket BEGIN cfs-faecher" in ng,
+              "A nginx: genau ein Block /cfs/ mit Paketmarke, alias ~/cfs-faecher/, vor /websocket")
+        check(lies(os.path.join(a.H, "cfs-faecher", "index.html")) == lies(os.path.join(PIHOST, "cfs-faecher", "index.html")),
+              "A Filament-Seite ~/cfs-faecher/index.html identisch")
+        navi = json.loads(lies(os.path.join(a.C, ".theme", "navi.json")))
+        check([n.get("href") for n in navi] == ["/cfs/"], "A Menüeintrag CFS-Fächer in config/.theme/navi.json")
+        check("Filament:  " in out and "Not-Aus:   Moonraker unter http://127.0.0.1:9 nicht erreichbar" in out
+              and "WARN" in out, "A Zusammenfassung: Filament-Seite + Not-Aus (Moonraker der Attrappe nicht erreichbar -> WARN, kein Abbruch)")
         mr = lies(a.MRC)
         check(len(re.findall(r"^enable_api_key: False$", mr, re.M)) == 1
               and mr.index("enable_api_key") > mr.index("[authorization]"), "A moonraker.conf: enable_api_key: False genau einmal in [authorization]")
@@ -605,8 +620,10 @@ def main():
         check(lies(a.NS).count("location ~ ^/upload/") == 1 and lies(a.MRC).count("enable_api_key") == 1,
               "B nginx-Block und Moonraker-Option weiterhin genau einmal")
         check(a.unit("k2-startwaechter") == sw and a.unit("k2-creality-bruecke") == br, "B Einheiten bytegleich")
-        check(a.zaehler("reloads", "nginx") == 1 and a.zaehler("neustarts", "moonraker") == 1,
+        check(a.zaehler("reloads", "nginx") == 2 and a.zaehler("neustarts", "moonraker") == 1,
               "B kein weiterer nginx-Reload / Moonraker-Neustart")
+        check("nginx-Block /cfs/ schon vorhanden" in out and "Menüeintrag schon da" in out,
+              "B Filament-Seite: unverändert gemeldet")
         check(a.zaehler("neustarts", "k2-startwaechter") == n_sw and a.zaehler("neustarts", "k2-creality-bruecke") == n_br,
               "B laufende, unveränderte Dienste nicht neu gestartet")
         check("k2-startwaechter: unverändert, aktiviert, läuft" in out and "schon vorhanden – unverändert" in out
@@ -641,14 +658,18 @@ def main():
         check(not os.path.exists(a.TD), "E ~/k2-tools entfernt (gab es vorher nicht)")
         check(a.zustand("active", "k2-startwaechter") == "inactive" and a.zustand("enabled", "k2-creality-bruecke") == "disabled",
               "E Dienste gestoppt/deaktiviert")
-        check(a.zaehler("reloads", "nginx") == 2 and a.zaehler("neustarts", "moonraker") == 2,
-              "E nginx neu geladen, Moonraker neu gestartet (Konfig zurück)")
+        check(a.zaehler("reloads", "nginx") == 4 and a.zaehler("neustarts", "moonraker") == 2,
+              "E nginx neu geladen (Upload-Block + /cfs/), Moonraker neu gestartet (Konfig zurück)")
+        check(not os.path.exists(os.path.join(a.H, "cfs-faecher"))
+              and not os.path.exists(os.path.join(a.C, ".theme", "navi.json")),
+              "E Filament-Seite und Menüeintrag entfernt (gab es vorher nicht)")
 
         # ============================================================ D
         fall("D alles abgeschaltet (--ohne-*), ohne moonraker-env")
         d = Attrappe(os.path.join(wurzel, "d"), moonraker_env=False)
         vorher = d.schnappschuss()
-        rc, out = d.lauf("install.sh", "--ohne-startwaechter", "--ohne-creality-bruecke", "--ohne-moonraker-anpassung")
+        rc, out = d.lauf("install.sh", "--ohne-startwaechter", "--ohne-creality-bruecke", "--ohne-moonraker-anpassung",
+                         "--ohne-cfs-seite", "--ohne-notaus-abfrage")
         check(rc == 0, "D install.sh Exit 0", out[-1500:] if rc else "")
         nachher = d.schnappschuss()
         check(lies(d.NS) == NGINX_SITE and lies(d.MRC) == MOONRAKER_CONF, "D nginx-Site und moonraker.conf unverändert")
@@ -670,7 +691,10 @@ def main():
         schreibe(f.S + ".active.k2-startwaechter", "active\n")
         rc, out = f.lauf("install.sh")
         check(rc == 0, "F install.sh Exit 0", out[-1500:] if rc else "")
-        check(lies(f.NS) == hand_ng and f.zaehler("reloads", "nginx") == 0, "F Hand-Block bleibt, nichts doppelt, kein Reload")
+        check(lies(f.NS).replace(lies(f.NS)[lies(f.NS).index("    # k2-pi-paket BEGIN cfs-faecher"):
+                                         lies(f.NS).index("# k2-pi-paket END cfs-faecher") + len("# k2-pi-paket END cfs-faecher\n\n")], "")
+              == hand_ng and f.zaehler("reloads", "nginx") == 1,
+              "F Hand-Block bleibt, nichts doppelt; nur /cfs/ ergänzt (ein Reload)")
         check(lies(f.MRC) == hand_mr and f.zaehler("neustarts", "moonraker") == 0, "F Moonraker schon aus: unverändert, kein Neustart")
         check(f.unit("k2-startwaechter").startswith("# k2-pi-paket: k2-startwaechter")
               and lies(os.path.join(f.TD, "k2_startwaechter.py")) == lies(os.path.join(HIER, "k2_startwaechter.py")),

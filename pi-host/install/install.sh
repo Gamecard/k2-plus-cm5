@@ -62,6 +62,11 @@ STARTWAECHTER=1
 BRUECKE=1
 BEWEGUNG_SPERREN=0        # --bewegung-gesperrt: _PI_FREIGABE allow_move False (Erst-Inbetriebnahme)
 MOONRAKER_ANPASSEN=1
+# Mainsail-Zusätze (Schritt 7, Standard AN, je abschaltbar): Filament-Seite /cfs/
+# (pi-host/cfs-faecher: Seite, Menüeintrag, nginx-Block) und Not-Aus-Abfrage
+CFS_SEITE=1
+NOTAUS_ABFRAGE=1
+CFS_DIR=${CFS_DIR:-$HOME/cfs-faecher}
 K2_TOOLS_DIR=${K2_TOOLS_DIR:-$HOME/k2-tools}
 MOONRAKER_CONF=${MOONRAKER_CONF:-$CONFIG_DIR/moonraker.conf}
 MOONRAKER_ENV=${MOONRAKER_ENV:-$HOME/moonraker-env}
@@ -156,6 +161,12 @@ Aufruf: ./install.sh [Optionen]
   --ohne-moonraker-anpassung moonraker.conf NICHT ändern (Standard: [authorization]
                              enable_api_key: False, sonst lehnt Moonraker OrcaSlicer mit 401 ab;
                              Moonraker wird nur bei einer Änderung neu gestartet)
+  --ohne-cfs-seite           Filament-Seite „CFS-Fächer“ NICHT einrichten (Standard: Seite nach
+                             ~/cfs-faecher/, Menüeintrag in config/.theme/navi.json, nginx-Block
+                             "location /cfs/" vor /websocket, nginx -t + reload; Aufruf http://<pi>/cfs/)
+  --ohne-notaus-abfrage      Mainsail-Abfragen „Not-Aus bestätigen“ und „Druck abbrechen bestätigen“
+                             NICHT setzen (Standard: werden eingeschaltet, wenn sie noch nie gesetzt
+                             waren – sonst beendet ein Klick einen laufenden Druck sofort)
   --bewegung-gesperrt        nach dem Kopieren in homing.cfg _PI_FREIGABE variable_allow_move: False
                              setzen (G28/Bewegung gesperrt, Freigabe zur Laufzeit mit ALLOW_MOTION).
                              Für die ERST-Inbetriebnahme empfohlen – das Paket liefert True (Stand
@@ -198,7 +209,7 @@ Aufruf: ./install.sh [Optionen]
 
 Umgebung (nur bei abweichender Installation): KLIPPER_DIR, CONFIG_DIR, KLIPPY_ENV, BACKUP_ROOT,
   K2_TOOLS_DIR, MOONRAKER_CONF, MOONRAKER_ENV, MOONRAKER_DIENST, NGINX_SITE, NGINX_BIN, NGINX_DIENST,
-  SYSTEMD_DIR, BOOTSTART_DIR, KIOSK_DIR, CROWSNEST_CONF, CROWSNEST_DIENST, MOONRAKER_URL
+  SYSTEMD_DIR, BOOTSTART_DIR, KIOSK_DIR, CROWSNEST_CONF, CROWSNEST_DIENST, MOONRAKER_URL, CFS_DIR
 EOF
 }
 
@@ -223,6 +234,8 @@ while [ $# -gt 0 ]; do
     --ohne-startwaechter)       STARTWAECHTER=0 ;;
     --ohne-creality-bruecke)    BRUECKE=0 ;;
     --ohne-moonraker-anpassung) MOONRAKER_ANPASSEN=0 ;;
+    --ohne-cfs-seite)           CFS_SEITE=0 ;;
+    --ohne-notaus-abfrage)      NOTAUS_ABFRAGE=0 ;;
     --bewegung-gesperrt)        BEWEGUNG_SPERREN=1 ;;
     --traeger)      TRAEGER=1 ;;
     --kiosk)        KIOSK=1 ;;
@@ -451,6 +464,21 @@ if [ $MOONRAKER_ANPASSEN -eq 1 ]; then
     MR_RESTART=0; warn "Dienst $MOONRAKER_DIENST.service nicht gefunden – nach einer Änderung Moonraker von Hand neu starten"
   fi
 fi
+if [ $CFS_SEITE -eq 1 ]; then
+  for f in cfs-faecher/index.html cfs-faecher/navi.json k2web.py; do
+    [ -f "$PKG/$f" ] || fehler "$f fehlt im Paket (oder --ohne-cfs-seite)"
+  done
+  [ -f "$NGINX_SITE" ] && [ -r "$NGINX_SITE" ] \
+    || fehler "Filament-Seite: nginx-Site $NGINX_SITE nicht lesbar (Mainsail? NGINX_SITE=…) – oder --ohne-cfs-seite"
+  CFS_PRUEF=$(python3 -I "$PKG/k2web.py" nginx-cfs "$NGINX_SITE" --pfad "$CFS_DIR" 2>&1) \
+    || fehler "Filament-Seite: nginx-Block in $NGINX_SITE nicht einfügbar ($(k2st "$CFS_PRUEF")) – oder --ohne-cfs-seite"
+  sudo -n "$NGINX_BIN" -v >/dev/null 2>&1 || fehler "Filament-Seite: nginx nicht aufrufbar (sudo -n $NGINX_BIN -v) – oder --ohne-cfs-seite"
+  case $(k2st "$CFS_PRUEF") in
+    geaendert) ok "Filament-Seite: nginx-Block /cfs/ fehlt bzw. wird angepasst (Einbau in Schritt 7)" ;;
+    vorhanden) ok "Filament-Seite: nginx-Block /cfs/ schon vorhanden" ;;
+    *)         ok "Filament-Seite: location /cfs/ steht schon (ohne Paketmarke) – bleibt" ;;
+  esac
+fi
 
 # Trägerplatine / Anzeige / Kamera (Schritt 7b) – ebenfalls vor jeder Änderung prüfen
 TR_TROCKEN=""
@@ -552,6 +580,12 @@ if [ -r "$NGINX_SITE" ] && [ -f "$PKG/k2web.py" ]; then
   echo "NGINX_VORHER=$(k2st "$NGV")" >> "$BK/state.env"
 else
   echo "NGINX_VORHER=keine_datei" >> "$BK/state.env"
+fi
+if [ -r "$NGINX_SITE" ] && [ -f "$PKG/k2web.py" ]; then
+  NGV=$(python3 -I "$PKG/k2web.py" nginx-cfs "$NGINX_SITE" --pfad "$CFS_DIR" 2>&1 || true)
+  echo "CFS_NGINX_VORHER=$(k2st "$NGV")" >> "$BK/state.env"
+else
+  echo "CFS_NGINX_VORHER=keine_datei" >> "$BK/state.env"
 fi
 # Trägerplatine: Protokoll des Trockenlaufs aus Schritt 1 aufheben
 if [ $TRAEGER -eq 1 ]; then
@@ -1037,6 +1071,69 @@ for paar in $DIENSTE_EIGEN; do
   esac
   [ -e "$SYSTEMD_DIR/$u.service" ] && info "$u.service aus einem früheren Lauf: $(systemctl is-enabled "$u.service" 2>/dev/null || echo '?'), unverändert (abschalten: sudo systemctl disable --now $u)"
 done
+# 7d Filament-Seite „CFS-Fächer“ (pi-host/cfs-faecher): Seite, Menüeintrag, nginx-Block /cfs/
+CFS_STATUS="nicht angefasst (--ohne-cfs-seite)"
+if [ $CFS_SEITE -eq 1 ]; then
+  mkdir -p "$BK/cfs"
+  echo "CFS_DIR=$CFS_DIR" >> "$BK/state.env"
+  if [ -d "$CFS_DIR" ]; then
+    cp -a "$CFS_DIR" "$BK/cfs/seite"; echo "CFS_DIR_VORHER=vorhanden" >> "$BK/state.env"
+  else
+    echo "CFS_DIR_VORHER=fehlt" >> "$BK/state.env"
+  fi
+  mkdir -p "$CFS_DIR"; chmod 0755 "$CFS_DIR"
+  install -m 0644 "$PKG/cfs-faecher/index.html" "$CFS_DIR/index.html"
+  cmp -s "$PKG/cfs-faecher/index.html" "$CFS_DIR/index.html" || fehler "Kopie $CFS_DIR/index.html fehlerhaft"
+  ok "Filament-Seite: index.html -> $CFS_DIR/"
+  # Menüeintrag „CFS-Fächer“ im Mainsail-Seitenmenü (eigene Einträge in navi.json bleiben)
+  NAVI=$CONFIG_DIR/.theme/navi.json
+  R=$(python3 -I "$PKG/k2web.py" navi "$NAVI" --vorlage "$PKG/cfs-faecher/navi.json" --aus "$BK/cfs/navi.neu" 2>&1) || true
+  case $(k2st "$R") in
+    geaendert)
+      mkdir -p "$CONFIG_DIR/.theme"
+      install -m 0644 "$BK/cfs/navi.neu" "$NAVI"
+      grep -qxF ".theme/navi.json" "$BK/config-installiert.txt" 2>/dev/null || echo ".theme/navi.json" >> "$BK/config-installiert.txt"
+      NAVI_STATUS="Menüeintrag ergänzt" ;;
+    unveraendert) NAVI_STATUS="Menüeintrag schon da" ;;
+    *) NAVI_STATUS="Menü NICHT geändert ($NAVI ist keine gültige JSON-Liste)"; warn "Filament-Seite: $NAVI_STATUS" ;;
+  esac
+  ok "Filament-Seite: $NAVI_STATUS"
+  # nginx: location /cfs/ (vor location /websocket)
+  cp "$NGINX_SITE" "$BK/cfs/site.vorher"
+  R=$(python3 -I "$PKG/k2web.py" nginx-cfs "$NGINX_SITE" --pfad "$CFS_DIR" --aus "$BK/cfs/site.neu" 2>&1) \
+    || fehler "nginx-Block /cfs/ nicht einfügbar ($(k2st "$R")) – $NGINX_SITE unverändert"
+  case $(k2st "$R") in
+    geaendert)
+      sudo -n install -m 0644 "$BK/cfs/site.neu" "$NGINX_SITE" || fehler "$NGINX_SITE nicht schreibbar"
+      if ! sudo -n "$NGINX_BIN" -t > "$BK/cfs/nginx-t.txt" 2>&1; then
+        sudo -n install -m 0644 "$BK/cfs/site.vorher" "$NGINX_SITE" \
+          || fehler "nginx -t fehlgeschlagen UND Original nicht zurückspielbar – von Hand: sudo cp $BK/cfs/site.vorher $NGINX_SITE"
+        fehler "nginx -t nach dem Einfügen von /cfs/ fehlgeschlagen ($BK/cfs/nginx-t.txt) – Original zurückgespielt"
+      fi
+      echo "CFS_NGINX_GEAENDERT=1" >> "$BK/state.env"
+      if sudo -n systemctl reload "$NGINX_DIENST"; then CFS_NG="nginx-Block /cfs/ eingefügt, nginx -t ok, neu geladen"
+      else CFS_NG="nginx-Block /cfs/ eingefügt, nginx -t ok, RELOAD FEHLGESCHLAGEN"; warn "systemctl reload $NGINX_DIENST fehlgeschlagen"; fi ;;
+    vorhanden) CFS_NG="nginx-Block /cfs/ schon vorhanden" ;;
+    *) CFS_NG="location /cfs/ ohne Paketmarke vorhanden – unverändert" ;;
+  esac
+  ok "Filament-Seite: $CFS_NG"
+  CFS_STATUS="$CFS_DIR, $NAVI_STATUS, $CFS_NG – Aufruf http://<pi>/cfs/"
+fi
+# 7e Mainsail-Abfragen vor Not-Aus/Abbrechen (Moonraker-Datenbank; nur setzen, wenn nie gesetzt)
+NA_STATUS="nicht angefasst (--ohne-notaus-abfrage)"
+if [ $NOTAUS_ABFRAGE -eq 1 ]; then
+  echo "MOONRAKER_URL=$MOONRAKER_URL" >> "$BK/state.env"
+  R=$(python3 -I "$PKG/k2web.py" notaus "$MOONRAKER_URL" --versuche "$MOONRAKER_VERSUCHE" 2>&1) || true
+  NA_KEYS=$(printf '%s\n' "$R" | sed -n 's/^GESETZT: //p' | tail -1)
+  case $(k2st "$R") in
+    gesetzt)   echo "NOTAUS_GESETZT=$NA_KEYS" >> "$BK/state.env"
+               NA_STATUS="Abfrage vor Not-Aus/Abbrechen eingeschaltet ($NA_KEYS; offene Mainsail-Seiten neu laden)" ;;
+    vorhanden) NA_STATUS="Abfragen vor Not-Aus/Abbrechen schon eingestellt – unverändert" ;;
+    *)         NA_STATUS="Moonraker unter $MOONRAKER_URL nicht erreichbar – Abfragen NICHT gesetzt (später erneut install.sh, oder Mainsail: Einstellungen → Benutzeroberfläche)"
+               warn "Mainsail: $NA_STATUS" ;;
+  esac
+  ok "Mainsail: $NA_STATUS"
+fi
 
 # ---------------------------------------------------------------------
 schritt 7b "Trägerplatine, Anzeige, Kamera (--traeger / --kiosk / --kamera)"
@@ -1277,6 +1374,8 @@ ZUSAMMENFASSUNG
   Brücke:    k2-creality-bruecke.service: $BR_STATUS
   nginx:     $NG_STATUS
   Moonraker: $MR_STATUS
+  Filament:  $CFS_STATUS
+  Not-Aus:   $NA_STATUS
   Träger:    $TR_STATUS
   Anzeige:   $KIOSK_STATUS
   Kamera:    $KAM_STATUS

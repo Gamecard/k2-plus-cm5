@@ -392,8 +392,21 @@ class FGcmd:
 
 
 class FReactor:
+    NOW = 0.0
+    NEVER = 9e99
+
     def __init__(self):
         self.t = 0.0
+        self.callbacks = []
+
+    def register_callback(self, cb):
+        self.callbacks.append(cb)
+
+    def register_timer(self, cb, when=None):
+        return cb
+
+    def update_timer(self, t, when):
+        pass
 
     def monotonic(self):
         return self.t
@@ -416,8 +429,16 @@ class FGcode:
     def __init__(self, printer):
         self.cmds = {}
         self.scripts = []
+        self.run = []
+        self.info = []
         self.printer = printer
         self.seen_home_at = []
+
+    def run_script(self, s):
+        self.run.append(s)
+
+    def respond_info(self, m):
+        self.info.append(m)
 
     def register_command(self, n, fn, desc=None):
         self.cmds[n] = fn
@@ -705,9 +726,17 @@ def test_makros():
     check("PRINT_FROM_LAYER -> KTWO_RESUME_PREPARE",
           r == ["KTWO_RESUME_PREPARE FILE=a.gcode LAYER=5"], r)
     r = _render(cp, "gcode_macro PRINT_FROM_LAYER", {})
-    check("PRINT_FROM_LAYER ohne FILE -> Fehler", any("FILE=" in l and
-                                                   l.startswith("ERROR")
-                                                   for l in r), r)
+    check("PRINT_FROM_LAYER ohne Parameter -> letzter Abbruch (PREPARE)",
+          r == ["KTWO_RESUME_PREPARE"], r)
+    # END_PRINT CANCEL=1 hält das Bett warm (C), normales Ende nicht
+    sec = "gcode_macro END_PRINT"
+    tx = cp.get(sec, "gcode")
+    check("END_PRINT: Bett-Soll vor dem Ausschalten gelesen",
+          "bett_soll = printer.heater_bed.target" in tx and
+          tx.index("bett_soll = printer") < tx.index("TURN_OFF_HEATERS FORCE=1"))
+    check("END_PRINT: nur bei Abbruch KTWO_RESUME_BETT_HALTEN nach dem Ausschalten",
+          "{% if cancel and bett_soll > 0" in tx and
+          tx.index("KTWO_RESUME_BETT_HALTEN") > tx.index("TURN_OFF_HEATERS FORCE=1"))
     r = _render(cp, "gcode_macro _PI_WIEDEREINSTIEG_VORDRUCK", {"E": "25"},
                 {"k2_box": {"allow_move": True}})
     check("PRIME am Schacht", r[0] == "KTWO_BOX_GO_EXTRUDE_POS" and
@@ -778,6 +807,227 @@ def test_echtdateien():
             check("Echtdatei %d: probe ehrlich abgelehnt (%s)" % (i, exc), True)
 
 
+def _datei_mitte():
+    """3 Schichten à 4 Bahnen (Quadrat 100..120), Rückzug vor der Fahrt,
+    Objekt-Klammern wie Orca, E relativ."""
+    L = ["; HEADER", "M83", "M140 S55", "M104 S220",
+         "START_PRINT EXTRUDER_TEMP=220 BED_TEMP=55",
+         "EXCLUDE_OBJECT_DEFINE NAME=teil POLYGON=[[100,100],[120,100],[120,120],[100,120]]",
+         "G1 X5 Y5 Z0.2 F3000", "G1 X60 Y5 E3 F1500"]
+    for n in range(1, 4):
+        z = 0.2 * n
+        L += [";LAYER_CHANGE", ";Z:%.1f" % z, "G1 E-0.8 F2400",
+              "G1 Z%.1f F600" % z, "G0 X100 Y100 F12000", "G1 E0.8 F2400",
+              "EXCLUDE_OBJECT_START NAME=teil",
+              "G1 X120 Y100 E1 F1500", "G1 X120 Y120 E1", "G1 X100 Y120 E1",
+              "G1 X100 Y100 E1", "EXCLUDE_OBJECT_END NAME=teil"]
+    L += ["END_PRINT"]
+    return schreib("mitte.gcode", "\n".join(L) + "\n")
+
+
+def _off(path, text, nach=0):
+    d = open(path, "rb").read()
+    return d.index(text.encode(), nach)
+
+
+def test_genau():
+    """23.11.2026: Abbruch mitten in Schicht 2 (Kopf auf der 3. Bahn) ->
+    Einstieg an genau dieser Zeile, nicht am Schichtanfang."""
+    p = _datei_mitte()
+    l2 = _off(p, ";LAYER_CHANGE\n;Z:0.4")
+    bahn3 = _off(p, "G1 X100 Y120 E1", l2)
+    bahn4 = _off(p, "G1 X100 Y100 E1", bahn3)
+    # Kopf bei X110 Y120 (Mitte der 3. Bahn), Klipper hat bis Bahn 4 gelesen
+    loc = R.locate_cut(p, l2, bahn4 + 5, [110.0, 120.0])
+    check("genau: Zeile der 3. Bahn gefunden", loc["cut"] == bahn3 and
+          loc["layer"] == 2 and loc["dist"] < 1e-6, loc)
+    # Kreuzung: Punkt X100 Y100 liegt auf Bahn 1-Start und Bahn 4-Ende -> frühester
+    loc = R.locate_cut(p, l2, bahn4 + 5, [100.0, 110.0])
+    check("genau: mehrdeutig -> frühester Treffer (lieber doppelt als Lücke)",
+          loc["cut"] == bahn4 or loc["cut"] < bahn4, loc)
+    try:
+        R.locate_cut(p, l2, bahn4 + 5, [200.0, 200.0])
+        check("genau: Kopf neben allen Bahnen -> Fehler", False)
+    except R.ResumeError as exc:
+        check("genau: Kopf neben allen Bahnen -> Fehler", "LAYER" in str(exc),
+              str(exc))
+    sc = R.scan_file(p, cut=bahn3)
+    sn = sc["snap"]
+    check("genau: Zustand an der Stelle (Schicht, Position, Objekt, kein Rückzug)",
+          sn["cut_layer"] == 2 and sn["first_xy"] == [120.0, 120.0] and
+          abs(sn["first_z"] - 0.4) < 1e-9 and sn["obj"] == "teil" and
+          sn["retract"] == 0.0, sn)
+    check("genau: belegt nur bis zur Stelle (Schicht 2 teilweise)",
+          abs(sn["max_z"] - 0.4) < 1e-9, sn["max_z"])
+    out = os.path.join(TMP, R.out_name("mitte.gcode", 2, genau=True))
+    plan = R.write_resume(p, out, None, "keep", cut=bahn3)
+    txt = open(out, encoding="utf-8").read()
+    rest = open(p, "rb").read()[bahn3:].decode()
+    check("genau: Dateiname *_ab_schicht_2_genau", out.endswith(
+        "mitte_ab_schicht_2_genau.gcode") and plan["layer"] == 2, out)
+    check("genau: Rest ab der Zeile byte-genau", txt.endswith(rest))
+    pre = txt[:len(txt) - len(rest)].splitlines()
+    check("genau: Objekt geöffnet vor dem Rest",
+          "EXCLUDE_OBJECT_START NAME=teil" in pre, pre[-8:])
+    check("genau: Vordruck-Rückzug ausgeglichen (E+0.8 relativ)",
+          "G1 E0.8 F2400" in pre, pre[-12:])
+    check("genau: Druckvorbereitung fertig gemeldet (k2_abbruch)",
+          "_PI_ABBRUCH_PUNKT AKTION=START_FERTIG" in pre)
+    i_xy = pre.index("G0 X120 Y120 F12000")
+    check("genau: auf sicherer Höhe zur Stelle, dann auf Z 0.4",
+          pre[i_xy - 1].startswith("G1 Z") and pre[i_xy + 1] == "G1 Z0.4 F600",
+          pre[i_xy - 1:i_xy + 2])
+    # Stelle nach dem Rückzug (zwischen E-0.8 und E0.8) -> Rückzug bleibt bestehen
+    fahrt = _off(p, "G0 X100 Y100 F12000", l2)
+    sn = R.scan_file(p, cut=fahrt)["snap"]
+    check("genau: Stelle in der Fahrt -> Rückzug 0.8 gemerkt",
+          abs(sn["retract"] - 0.8) < 1e-9, sn["retract"])
+    R.write_resume(p, out, None, "keep", cut=fahrt)
+    pre = open(out, encoding="utf-8").read().split("; ---- Originaldatei")[0]
+    check("genau: Rückzug in der Fahrt -> kein Ausgleich nötig",
+          "G1 E0 F2400" not in pre and "G1 E0.8 F2400" not in pre)
+    # Schichtanfang-Datei bekommt die Meldung auch (D)
+    out2 = os.path.join(TMP, "mitte_ab_schicht_2.gcode")
+    R.write_resume(p, out2, 2, "keep")
+    check("Schichtanfang: START_FERTIG ebenfalls im Vorspann",
+          "_PI_ABBRUCH_PUNKT AKTION=START_FERTIG" in open(out2).read())
+    check("out_name: _genau wird beim Weitergeben ersetzt",
+          R.out_name("x_ab_schicht_4_genau.gcode", 7, genau=True) ==
+          "x_ab_schicht_7_genau.gcode")
+
+
+def test_druckstand():
+    d = R.Druckstand(window=3.0)
+    sd = {"file_path": "/g/a.gcode", "file_position": 100, "is_active": True}
+    check("Stand: nur im Druck", not d.sample(0, "standby", sd, [1, 2, 3], None))
+    check("Stand: erster Messpunkt", d.sample(0, "printing", sd, [10, 20, 0.5],
+                                              [0, 0, -0.1]))
+    check("Stand: Kopf in Dateikoordinaten (ohne Z-Versatz)",
+          d.snap["kopf"] == [10, 20, 0.6] and d.snap["pos_lo"] == 100, d.snap)
+    for t, pos in ((1, 200), (2, 300), (3.5, 400), (4.5, 500)):
+        sd["file_position"] = pos
+        d.sample(t, "printing", sd, [t, 0, 0.5], None)
+    check("Stand: pos_lo = Lesestand vor 3 s", d.snap["pos_lo"] == 200 and
+          d.snap["pos_hi"] == 500, d.snap)
+    # Datei steht (END_PRINT nach Abbruch fährt zum Messer) -> eingefroren
+    check("Stand: Datei steht -> kein neuer Stand",
+          not d.sample(5, "printing", sd, [-8, 200, 3], None) and
+          d.snap["kopf"][0] == 4.5)
+    st = d.ende("abgebrochen", 123.0)
+    check("Stand: Ende mit Grund", st["grund"] == "abgebrochen" and
+          st["zeit"] == 123.0 and st["kopf"][0] == 4.5)
+    f = os.path.join(TMP, "k2", "druckstand.json")
+    R.stand_schreiben(f, st)
+    check("Stand: schreiben/lesen", R.stand_lesen(f) == st)
+    check("Stand: falsche Datei passt nicht", not R.stand_passt(st, ORCA))
+
+
+def test_modul_stand():
+    """PREPARE ohne Parameter nimmt den gespeicherten Abbruch (genau)."""
+    pr, m = _modul()
+    p = _datei_mitte()
+    l2 = _off(p, ";LAYER_CHANGE\n;Z:0.4")
+    bahn3 = _off(p, "G1 X100 Y120 E1", l2)
+    stt = os.stat(p)
+    m.stand = {"version": 1, "grund": "notaus", "datei": "mitte.gcode",
+               "pfad": p, "groesse": stt.st_size, "mtime": int(stt.st_mtime),
+               "pos_lo": l2, "pos_hi": bahn3 + 40, "kopf": [110.0, 120.0, 0.4],
+               "zeit": 0, "bett": 55.0}
+    pr.objs["print_stats"].st["state"] = "cancelled"
+    pr.objs["toolhead"].st["homed_axes"] = "xyz"
+    g = FGcmd()
+    m.cmd_prepare(g)
+    check("PREPARE ohne FILE: genaue Stelle aus dem Druckstand",
+          m.last["genau"] and m.last["cut"] == bahn3 and
+          m.last["file"] == "mitte_ab_schicht_2_genau.gcode", (m.last, g.out))
+    check("PREPARE: Meldung nennt die Zeile", any("Genaue Stelle" in o
+                                                 for o in g.out), g.out)
+    m.cmd_prepare(FGcmd(GENAU=0))
+    check("GENAU=0 -> Schichtanfang aus dem Stand, mit Warnung",
+          not m.last["genau"] and m.last["layer"] == 2, m.last)
+    m.stand = dict(m.stand, grund="verworfen")
+    try:
+        m.cmd_prepare(FGcmd())
+        check("verworfener Stand -> FILE nötig", False)
+    except GErr:
+        check("verworfener Stand -> FILE nötig", True)
+
+
+def test_modul_ablauf():
+    """Zeitgeber schreibt den Stand; Not-Aus -> Grund notaus, nach Neustart
+    Bett wieder an; Störung -> Bett bleibt aus."""
+    pr, m = _modul()
+    f = os.path.join(TMP, "ablauf", "druckstand.json")
+    m.state_file = f
+    p = _datei_mitte()
+    sd = {"file_path": p, "file_position": 50, "is_active": True}
+    pr.objs["virtual_sdcard"] = type("SD", (), {"sdcard_dirname": TMP,
+                                                "get_status": lambda s_, e: sd})()
+    live = {"live_position": [110.0, 120.0, 0.3, 0.0]}
+    pr.objs["motion_report"] = type("MR", (), {"get_status": lambda s_, e: live})()
+    pr.objs["gcode_move"] = Obj({"homing_origin": [0, 0, -0.1, 0]})
+    pr.objs["heater_bed"] = Obj({"target": 55.0})
+    pr.objs["extruder"] = Obj({"target": 220.0})
+    pr.objs["print_stats"].st.update({"state": "printing",
+                                      "info": {"current_layer": 2}})
+    for t in range(8):
+        sd["file_position"] = 50 + 10 * t
+        m._tick(float(t))
+    st = R.stand_lesen(f)
+    check("Zeitgeber: Stand geschrieben (laufend, Kopf, Schicht, Bett)",
+          st and st["grund"] == "laufend" and st["kopf"] == [110.0, 120.0, 0.4]
+          and st["schicht"] == 2 and st["bett"] == 55.0, st)
+    pr.state_msg = "Shutdown due to webhooks request"
+    pr.get_state_message = lambda: (pr.state_msg, "shutdown")
+    m._shutdown()
+    check("Not-Aus: Grund notaus gespeichert", R.stand_lesen(f)["grund"] == "notaus")
+    check("nach dem Abschalten: Zeitgeber schreibt nichts mehr",
+          m._tick(9.0) == pr.reactor.NEVER)
+    # Neustart: neues Modul liest den Stand und heizt das Bett
+    st = R.stand_lesen(f)
+    st["zeit"] = R.time.time() - 60
+    R.stand_schreiben(f, st)
+    pr2, m2 = _modul()
+    m2.state_file = f
+    m2.stand = R.stand_lesen(f)
+    m2._ready()
+    for cb in pr2.reactor.callbacks:
+        cb(0)
+    check("Neustart nach Not-Aus: Bett wieder auf 55 °C",
+          "M140 S55.0" in pr2.gcode.run and m2.hold is not None, pr2.gcode.run)
+    # Störung (z. B. Heizung) -> kein Aufheizen
+    st["grund"] = "stoerung"
+    R.stand_schreiben(f, st)
+    pr3, m3 = _modul()
+    m3.state_file = f
+    m3.stand = R.stand_lesen(f)
+    m3._ready()
+    check("Neustart nach Störung: Bett bleibt aus",
+          not pr3.reactor.callbacks and not pr3.gcode.run)
+    # Druck lief beim Neustart noch -> unterbrochen
+    st["grund"] = "laufend"
+    R.stand_schreiben(f, st)
+    pr4, m4 = _modul()
+    m4.state_file = f
+    m4.stand = R.stand_lesen(f)
+    m4._ready()
+    check("Neustart mitten im Druck -> Grund unterbrochen (fortsetzbar)",
+          R.stand_lesen(f)["grund"] == "unterbrochen")
+    # Abbruch über Mainsail: Zustand cancelled -> Grund abgebrochen
+    pr5, m5 = _modul()
+    m5.state_file = os.path.join(TMP, "ablauf5", "druckstand.json")
+    pr5.objs.update({k: pr.objs[k] for k in ("virtual_sdcard", "motion_report",
+                                              "gcode_move", "heater_bed",
+                                              "extruder")})
+    pr5.objs["print_stats"].st.update({"state": "printing", "info": {}})
+    sd["file_position"] = 300
+    m5._tick(0.0)
+    pr5.objs["print_stats"].st["state"] = "cancelled"
+    m5._tick(1.0)
+    check("Abbruch: Grund abgebrochen gespeichert",
+          R.stand_lesen(m5.state_file)["grund"] == "abgebrochen")
+
+
 def test_py39():
     for f in ("k2_resume.py", "test_k2_resume.py"):
         ast.parse(open(os.path.join(HIER, f), encoding="utf-8").read(),
@@ -807,7 +1057,8 @@ def test_start_print_varianten():
 TESTS = [test_scan, test_bogen, test_keep, test_probe, test_fehlerfaelle,
          test_datei, test_cli, test_modul, test_makros,
          test_keine_doppelten_abschnitte, test_echtdateien,
-         test_start_print_varianten, test_py39]
+         test_start_print_varianten, test_genau, test_druckstand,
+         test_modul_stand, test_modul_ablauf, test_py39]
 
 if __name__ == "__main__":
     for t in TESTS:

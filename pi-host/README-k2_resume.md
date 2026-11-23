@@ -25,13 +25,79 @@ Generator-Dateien.
 **Das Teil bleibt auf dem Bett. Nichts anfassen, nicht am Bett ziehen.**
 
 1. Klipper läuft, kein Druck aktiv (abgebrochen ist ok; **pausiert → `RESUME`**, nicht Wiedereinstieg).
-2. Schichten ansehen: `KTWO_RESUME_INFO FILE=<datei>` (optional `LAYER=<n>` für den Zustand an Schicht n). Wurde die
-   Datei gerade abgebrochen und kennt Klipper die Dateiposition noch, steht dort „Abbruch lag in Schicht …“.
-3. Datei erzeugen: `PRINT_FROM_LAYER FILE=<datei> LAYER=<n>` (oder `LAYER=auto` = Abbruchschicht, oder `Z=<mm>`).
-   - Empfehlung: die **unterbrochene Schicht selbst** (sie wird über dem Teilstück erneut gedruckt). Eine Schicht
-     weiter fehlt sonst ein Stück.
-4. Meldung lesen (Modus, Fahrhöhe, ggf. Antastpunkt und **WARNUNG**), dann die neue Datei in Mainsail drucken
-   (oder gleich `START=1`).
+2. Nachsehen, was gespeichert ist: `KTWO_RESUME_STAND` (Datei, Grund, Schicht, Kopfposition, wie lange her).
+3. Datei erzeugen: **`PRINT_FROM_LAYER`** ohne Parameter. Das nimmt den letzten Abbruch und steigt an der
+   **genauen Stelle** ein, an der der Kopf stand (Abschnitt 2a). Die Datei heißt `<name>_ab_schicht_<n>_genau.gcode`.
+   - Nur wenn das nicht geht (kein gespeicherter Stand, andere Datei): `PRINT_FROM_LAYER FILE=<datei> LAYER=<n>`
+     (bzw. `Z=<mm>`). Das ist der alte Einstieg **am Schichtanfang** – der schon gedruckte Teil dieser Schicht wird
+     dabei noch einmal überfahren; die Meldung warnt davor.
+4. Meldung lesen (Modus, Fahrhöhe, genaue Stelle, ggf. Antastpunkt und **WARNUNG**), dann die neue Datei in Mainsail
+   drucken (oder gleich `START=1`).
+5. Wird die Fortsetzung nicht gebraucht: `KTWO_RESUME_VERWERFEN` (vergisst den Stand, schaltet das warm gehaltene Bett
+   aus).
+
+## 2a. Druckstand und genaue Stelle (23.11.2026)
+
+**Anlass:** Am 23.11.2026 brach ein Druck (PLA, 425 Schichten) in Schicht 24 durch einen Klick auf den Not-Aus ab.
+Nach dem Neustart kannte Klipper die Abbruchstelle nicht mehr; die Fortsetzung begann deshalb am **Anfang** von
+Schicht 24. Davon waren aber schon 59 % gedruckt: Die Düse fuhr in Schichthöhe durch den vorhandenen Kunststoff, dazu
+war das Bett inzwischen auf 38 °C abgekühlt – das Teil wurde zerstört. Daraus folgen vier Änderungen:
+
+**A – Druckstand mitschreiben.** Während eines Drucks misst `k2_resume` alle 0,5 s
+
+- den **Lesestand** der Datei (`virtual_sdcard.file_position` – wie weit Klipper die Datei gelesen hat) und
+- die **gemessene Kopfposition** (`motion_report.live_position` – wo der Kopf in diesem Moment wirklich ist,
+  umgerechnet in Datei-Koordinaten, also ohne den Z-Versatz aus `SET_GCODE_OFFSET`).
+
+Alle 2 s (`state_interval`) sowie bei Pause, Abbruch, Ende und Not-Aus schreibt es das nach
+`config/k2/druckstand.json` (atomar, mit `fsync`, damit auch ein Stromausfall eine lesbare Datei hinterlässt).
+
+*Warum zwei Werte?* Klipper **liest voraus**: Der Lesestand liegt bis zu etwa 2 s vor der Zeile, die der Kopf gerade
+abfährt. Aus dem Lesestand allein lässt sich die ausgeführte Zeile also nicht bestimmen. Gespeichert wird deshalb ein
+**Suchfenster** – Lesestand jetzt (`pos_hi`) und Lesestand vor 3 s (`pos_lo`) – plus die echte Kopfposition.
+
+*Eingefroren:* Ein neuer Stand entsteht nur, solange die Datei weiterläuft. Steht sie (z. B. `END_PRINT` nach einem
+Abbruch fährt zum Messer, Warten auf eine Heizung, CFS-Wechsel), bleibt der letzte Stand erhalten – die Kopfposition
+in diesen Makros gehört nicht zur Datei.
+
+Gründe im Stand: `laufend`, `pause`, `abgebrochen`, `fehler`, `fertig`, `notaus` (Not-Aus-Knopf bzw. `M112`),
+`stoerung` (jede andere Abschaltung, z. B. Heizung oder MCU-Verbindung), `unterbrochen` (Klipper/Pi neu gestartet,
+während der Druck lief – Stromausfall, Absturz), `verworfen`. Fortsetzen geht bei allen außer `laufend`, `fertig`,
+`beendet` und `verworfen`.
+
+**B – Einstieg an der genauen Stelle.** `PRINT_FROM_LAYER` sucht im Suchfenster die Zeile (`G0`–`G3`), deren Bahn
+durch die gemessene Kopfposition läuft (höchstens 0,5 mm daneben; über 2 mm gilt die Stelle als nicht gefunden).
+Kreuzt sich die Bahn im Fenster, gilt der **früheste** Treffer: lieber ein kurzes Stück doppelt als eine Lücke. Die
+neue Datei beginnt genau an dieser Zeile. Der Vorspann stellt dafür zusätzlich her:
+
+- **Rückzug:** Nach dem Vordrucken am Schacht ist das Filament 0,8 mm zurückgezogen. Die Datei erwartet an der Stelle
+  ihren eigenen Rückzugsstand (0 mitten in einer Bahn, z. B. 0,8 mm in einer Leerfahrt). Der Unterschied wird mit
+  einem `G1 E…` ausgeglichen.
+- **Absolute E-Werte** (`M82`): Zähler mit `G92 E<wert>` auf den Stand der Datei.
+- **Objekt:** Lag die Stelle in einem Objekt, öffnet der Vorspann es wieder (`EXCLUDE_OBJECT_START NAME=…`) –
+  sonst meldet Klipper beim nächsten `EXCLUDE_OBJECT_END` „does not match“.
+- Der Kopf fährt auf sicherer Höhe zum **Anfang** dieser Bahn und senkt sich erst dort auf ihre Höhe ab.
+
+Doppelt gefahren wird so höchstens die eine Bahn, auf der der Kopf beim Abbruch war. Nach einem Stromausfall ist der
+Stand bis zu 2 s alt – dann wird entsprechend etwas mehr doppelt gefahren.
+
+**C – Bett warm halten.** Nach **Abbrechen** schaltet `END_PRINT` die Heizungen aus und stellt danach das Bett wieder
+auf seinen Sollwert (`KTWO_RESUME_BETT_HALTEN`) – für `bed_hold_min` Minuten (Standard 60), damit das Teil haftet.
+Danach geht das Bett von selbst aus (nicht, wenn inzwischen ein neuer Druck läuft). Nach einem **Not-Aus** ist alles
+aus; startet Klipper danach neu, heizt `k2_resume` das Bett für die restliche Haltezeit wieder – **nur** wenn der
+Grund der Not-Aus-Knopf war, **nie** nach einer Störung (Heizung, Verbindung …). Die Düse bleibt immer aus. Sofort
+aus: `KTWO_RESUME_VERWERFEN` oder `TURN_OFF_HEATERS`.
+
+**D – Pause bleibt Pause.** `k2_abbruch` behandelt eine Pause während der Druckvorbereitung als Abbruch. Die
+Vorbereitung endete bisher nur in `START_PRINT` – eine Fortsetzungsdatei ruft das nicht auf, also wurde dort **jede**
+Pause zum Abbruch (live 23.11.2026). Der Vorspann meldet jetzt am Ende `_PI_ABBRUCH_PUNKT AKTION=START_FERTIG`.
+
+**E – Abfragen in Mainsail.** Not-Aus und „Druck abbrechen“ fragen nach (`uiSettings.confirmOnEmergencyStop`,
+`uiSettings.confirmOnCancelJob`; `install.sh` setzt beide, s. Abschnitt 6).
+
+**Grenze:** Nach einem Not-Aus ist die Z-Referenz verloren (Motoren stromlos, das Bett sackt ab). Die Fortsetzung tastet
+dann neben dem Teil neu an; kann sie das Bett nicht ausrichten (`TILT=0`), bleibt ein Höhenfehler von bis zu etwa
+±0,2 mm über dem Teil. Am genauesten ist eine Fortsetzung nach **Abbrechen** (Motoren bleiben an, Modus `keep`).
 
 ## 3. Z-Referenz – die beiden Modi
 
@@ -81,8 +147,8 @@ Rest der Datei.
 - Die Erzeugung läuft in einem eigenen Prozess (Klipper blockiert nicht; 15-MB-Datei ≈ 0,4 s).
 - Nicht für einen pausierten Druck (dafür `RESUME`).
 - Höhe der X-Brücke über der Düse (25 mm) und Kopf-Umriss (50 mm) sind **ANNAHMEN** – bei hohen Teilen erst messen.
-- `LAYER=auto` geht nur, solange `virtual_sdcard` die Dateiposition des Abbruchs noch kennt (nach Neustart nicht).
-- Ein Teil der unterbrochenen Schicht wird doppelt gedruckt (Düse fährt in Schichthöhe über das Teilstück).
+- Ohne gespeicherten Druckstand (z. B. Druck vor dem 23.11.2026 gestartet) geht nur der Einstieg am Schichtanfang;
+  dabei wird ein Teil der unterbrochenen Schicht doppelt gedruckt (Düse fährt in Schichthöhe über das Teilstück).
 - Adaptives Netz des Originaldrucks (`ADAPTIVE=1`, Profil `adaptiv`) wird im Modus `probe` nicht wiederhergestellt
   (es gilt `default`).
 
@@ -111,6 +177,9 @@ curl -X POST http://localhost:7125/server/database/item \
 ```
 
 Analog `uiSettings.confirmOnCancelJob` (Abfrage vor „Druck abbrechen“). Offene Mainsail-Seiten danach neu laden.
+Seit 23.11.2026 setzt `install.sh` beide (nur wenn sie noch nie gesetzt waren; abschaltbar mit
+`--ohne-notaus-abfrage`), vorher geschah das nicht automatisch – der Not-Aus-Klick vom 23.11.2026 lief deshalb ohne
+Abfrage durch.
 
 ## 7. Deploy
 

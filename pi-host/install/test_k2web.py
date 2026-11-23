@@ -206,6 +206,104 @@ with tempfile.TemporaryDirectory() as tmp:
     rc, out = cli("unbekannt", mrc)
     check(rc == 2, "C9 unbekannter Unterbefehl -> Exit 2")
 
+# --------------------------------------------------------------------- Filament-Seite /cfs/
+SITE = ("server {\n    listen 80;\n    root /home/pi/mainsail;\n\n    location / {\n"
+        "        try_files $uri $uri/ /index.html;\n    }\n\n    location /websocket {\n"
+        "        proxy_pass http://apiserver/websocket;\n    }\n}\n")
+n, st = w.nginx_cfs_einfuegen(SITE, "/home/pi/cfs-faecher")
+check(st == "geaendert" and n.count("location /cfs/ {") == 1
+      and n.index("location /cfs/") < n.index("location /websocket")
+      and "    alias /home/pi/cfs-faecher/;" in n, "CFS1 Block vor /websocket, alias mit /")
+n2, st2 = w.nginx_cfs_einfuegen(n, "/home/pi/cfs-faecher")
+check(st2 == "vorhanden" and n2 == n, "CFS2 zweiter Lauf: vorhanden, bytegleich")
+n3, st3 = w.nginx_cfs_einfuegen(n, "/home/pi/anders")
+check(st3 == "geaendert" and n3.count("location /cfs/") == 1 and "alias /home/pi/anders/;" in n3,
+      "CFS3 anderer Ordner -> Block ersetzt, nicht doppelt")
+hand = SITE.replace("    location /websocket", "    location /cfs/ { alias /x/; }\n\n    location /websocket")
+check(w.nginx_cfs_einfuegen(hand, "/home/pi/cfs-faecher") == (hand, "vorhanden_ohne_marke"),
+      "CFS4 von Hand eingetragener /cfs/-Block bleibt")
+check(w.nginx_cfs_einfuegen(SITE.replace("location /websocket", "location /ws"), "/p")[1] == "kein_websocket",
+      "CFS5 ohne /websocket: nichts geändert")
+check(w.nginx_cfs_entfernen(n) == (SITE, "entfernt"), "CFS6 Rückbau bytegleich zum Original")
+check(w.nginx_cfs_entfernen(SITE)[1] == "nicht_vorhanden", "CFS7 Rückbau ohne Block: nicht_vorhanden")
+# Upload-Block und /cfs/ nebeneinander, Entfernen des einen lässt den anderen stehen
+beide, _ = w.nginx_upload_einfuegen(n)
+check(w.nginx_upload_entfernen(beide)[0] == n and w.nginx_cfs_entfernen(beide)[0] == w.nginx_upload_einfuegen(SITE)[0],
+      "CFS8 Upload-Block und /cfs/ unabhängig entfernbar")
+
+# Menü navi.json
+V = [{"title": "CFS-Fächer", "href": "/cfs/", "target": "_self", "position": 65}]
+t, s_ = w.navi_zusammenfuehren("", V)
+check(s_ == "geaendert" and __import__("json").loads(t) == V, "N1 ohne Datei -> Eintrag angelegt")
+check(w.navi_zusammenfuehren(t, V) == (t, "unveraendert"), "N2 zweiter Lauf unverändert")
+eigen = '[{"title": "Kamera", "href": "/cam/"}, {"title": "alt", "href": "/cfs/"}]'
+t, s_ = w.navi_zusammenfuehren(eigen, V)
+j = __import__("json").loads(t)
+check(s_ == "geaendert" and j[0]["href"] == "/cam/" and j[1] == V[0] and len(j) == 2,
+      "N3 eigene Einträge bleiben, gleiches href ersetzt")
+check(w.navi_zusammenfuehren("{kaputt", V) == ("{kaputt", "defekt"), "N4 kaputte Datei -> defekt, nichts geändert")
+
+# Mainsail-Abfragen gegen einen kleinen Moonraker-Ersatz
+import http.server  # noqa: E402
+import json as _json  # noqa: E402
+import threading  # noqa: E402
+import urllib.parse as _up  # noqa: E402
+DB = {}
+
+
+class _H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _antwort(self, code, obj):
+        b = _json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def do_GET(self):
+        u = _up.urlparse(self.path)
+        if u.path == "/server/info":
+            return self._antwort(200, {"result": {}})
+        q = dict(_up.parse_qsl(u.query))
+        if q.get("key") in DB:
+            return self._antwort(200, {"result": {"value": DB[q["key"]]}})
+        self._antwort(404, {"error": {"code": 404}})
+
+    def do_POST(self):
+        d = _json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        DB[d["key"]] = d["value"]
+        self._antwort(200, {"result": d})
+
+    def do_DELETE(self):
+        q = dict(_up.parse_qsl(_up.urlparse(self.path).query))
+        if q.get("key") in DB:
+            del DB[q["key"]]
+            return self._antwort(200, {"result": {}})
+        self._antwort(404, {"error": {"code": 404}})
+
+
+srv = http.server.HTTPServer(("127.0.0.1", 0), _H)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+URL = "http://127.0.0.1:%d" % srv.server_port
+DB["uiSettings.confirmOnCancelJob"] = False        # im Menü bewusst aus
+st, ges = w.notaus_setzen(URL, versuche=1)
+check(st == "gesetzt" and ges == ["uiSettings.confirmOnEmergencyStop"]
+      and DB["uiSettings.confirmOnEmergencyStop"] is True and DB["uiSettings.confirmOnCancelJob"] is False,
+      "NA1 nur fehlende Abfrage gesetzt, bewusst abgeschaltete bleibt aus")
+check(w.notaus_setzen(URL, versuche=1) == ("vorhanden", []), "NA2 zweiter Lauf: vorhanden, nichts gesetzt")
+check(w.notaus_entfernen(URL, ges) == "entfernt" and "uiSettings.confirmOnEmergencyStop" not in DB
+      and "uiSettings.confirmOnCancelJob" in DB, "NA3 Rückbau nimmt nur die selbst gesetzte zurück")
+check(w.notaus_setzen("http://127.0.0.1:9", versuche=1, pause=0) == ("kein_moonraker", []),
+      "NA4 Moonraker nicht erreichbar -> kein_moonraker")
+r = subprocess.run([sys.executable, "-I", os.path.join(HIER, "k2web.py"), "notaus", URL, "--versuche", "1"],
+                   capture_output=True, text=True)
+check(r.returncode == 0 and "GESETZT: uiSettings.confirmOnEmergencyStop" in r.stdout
+      and r.stdout.strip().endswith("STATUS: gesetzt"), "NA5 Aufruf von der Kommandozeile")
+srv.shutdown()
+
 # --------------------------------------------------------------------- Einheiten
 ERSETZ = {"@USER@": "pi", "@PY@": "/usr/bin/python3", "@TOOLS@": "/home/x/k2-tools",
           "@DIENST@": "klipper", "@MOONRAKER_DIENST@": "moonraker"}

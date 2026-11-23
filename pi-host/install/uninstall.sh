@@ -23,7 +23,8 @@ hilfe() {
   cat <<'EOF'
 Aufruf: ./uninstall.sh [Optionen]
   Stellt Module, Config (inkl. moonraker.conf), Klipper-Checkout, k2-bootstart,
-  Start-Wächter, Creality-Brücke und den nginx-Upload-Block auf den Stand vor dem
+  Start-Wächter, Creality-Brücke, den nginx-Upload-Block, die Filament-Seite /cfs/
+  und die Mainsail-Abfragen vor Not-Aus/Abbrechen auf den Stand vor dem
   gewählten install.sh-Lauf zurück. Ebenso die Anzeige (install.sh --kiosk: Dienste
   k2-kiosk/k2-display-ruhe, ~/k2-kiosk, Anmeldung auf tty1) und den Webcam-Eintrag
   (install.sh --kamera); crowsnest.conf kommt mit dem Config-Ordner zurück.
@@ -209,6 +210,42 @@ else
     sudo -n install -m 0644 "$BK/nginx/site.vor-rueckbau" "$NS" || true
     warn "nginx -t nach dem Entfernen fehlgeschlagen – $NS unverändert gelassen (Block bitte von Hand entfernen)"
   fi
+fi
+
+schritt 3d2 "Filament-Seite /cfs/ und Mainsail-Abfragen"
+CV=$(st CFS_NGINX_VORHER)
+if [ "$CV" = vorhanden ] || [ "$CV" = vorhanden_ohne_marke ]; then
+  ok "nginx-Block /cfs/ stand schon vor diesem Lauf in $NS – bleibt"
+elif [ ! -r "$NS" ] || ! grep -q '^[[:space:]]*# k2-pi-paket BEGIN cfs-faecher' "$NS"; then
+  ok "kein nginx-Block /cfs/ des Pakets in $NS – nichts zu tun"
+elif [ -z "$K2WEB" ]; then
+  warn "k2web.py fehlt – nginx-Block /cfs/ bitte von Hand aus $NS entfernen"
+else
+  mkdir -p "$BK/cfs"
+  cp "$NS" "$BK/cfs/site.vor-rueckbau"
+  python3 -I "$K2WEB" nginx-cfs-entfernen "$NS" --aus "$BK/cfs/site.rueckbau" >/dev/null || fehler "nginx-Block /cfs/ nicht entfernbar"
+  sudo -n install -m 0644 "$BK/cfs/site.rueckbau" "$NS" || fehler "$NS nicht schreibbar"
+  if sudo -n "$NB" -t >/dev/null 2>&1; then
+    sudo -n systemctl reload "$ND" || warn "systemctl reload $ND fehlgeschlagen"
+    ok "nginx-Block /cfs/ aus $NS entfernt, nginx -t ok, neu geladen"
+  else
+    sudo -n install -m 0644 "$BK/cfs/site.vor-rueckbau" "$NS" || true
+    warn "nginx -t nach dem Entfernen fehlgeschlagen – $NS unverändert gelassen"
+  fi
+fi
+CD=$(st CFS_DIR)
+case "$(st CFS_DIR_VORHER)" in
+  fehlt)     if [ -n "$CD" ] && [ -d "$CD" ]; then rm -f "$CD/index.html"; rmdir "$CD" 2>/dev/null || true; ok "Filament-Seite $CD entfernt"; fi ;;
+  vorhanden) if [ -d "$BK/cfs/seite" ]; then rm -rf "$CD"; cp -a "$BK/cfs/seite" "$CD"; ok "Filament-Seite $CD = Stand vor dem Lauf"; fi ;;
+esac
+NK=$(st NOTAUS_GESETZT)
+if [ -n "$NK" ] && [ -n "$K2WEB" ]; then
+  MU2=$(st MOONRAKER_URL); [ -n "$MU2" ] || MU2=${MOONRAKER_URL:-http://127.0.0.1:7125}
+  R=$(python3 -I "$K2WEB" notaus-entfernen "$MU2" --keys "$NK" 2>&1 || true)
+  case "$R" in
+    *"STATUS: entfernt"*|*"STATUS: nicht_vorhanden"*) ok "Mainsail-Abfragen dieses Laufs zurückgenommen ($NK)" ;;
+    *) warn "Moonraker nicht erreichbar – Mainsail-Abfragen ($NK) bleiben (Mainsail: Einstellungen → Benutzeroberfläche)" ;;
+  esac
 fi
 
 schritt 3e "Anzeige (Kiosk), Webcam-Eintrag, Trägerplatine"

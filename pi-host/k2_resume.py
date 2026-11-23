@@ -56,6 +56,14 @@ import subprocess
 import sys
 import time
 
+try:
+    from . import k2_konsole as _K2K
+except ImportError:
+    try:
+        import k2_konsole as _K2K
+    except ImportError:       # CLI-Kindprozess ohne Modulpfad
+        _K2K = None
+
 MARKER = ";LAYER_CHANGE"
 VERSION = "1.0"
 SAFE_MARGIN_DEFAULT = 10.0     # mm über dem höchsten gedruckten Punkt
@@ -73,6 +81,10 @@ BEAM_BAND = 30.0               # mm: halbe Breite der X-Brücke um Y des Kopfes
 BEAM_CLEAR = 25.0              # mm: ANNAHME Luft unter der X-Brücke über der Düse
 Z_MAX_SAFE = 340.0
 CHILD_TIMEOUT_S = 180.0
+VORDRUCK_RETRACT = 0.8         # mm, _PI_WIEDEREINSTIEG_VORDRUCK zieht danach so weit zurück
+CUT_TOL = 0.5                  # mm: Kopfposition liegt auf dieser Bahn (genaue Stelle)
+CUT_TOL_MAX = 2.0              # mm: darüber gilt die Stelle als nicht gefunden
+CUT_WINDOW_S = 3.0             # s: so weit liest Klipper höchstens voraus (Suchfenster)
 
 _NUM = r"[-+]?(?:\d+\.?\d*|\.\d+)"
 _WORD_RE = re.compile(r"([A-Za-z])(" + _NUM + r")")
@@ -195,13 +207,17 @@ def _merge(a, b):
     return [min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3])]
 
 
-def scan_file(path, layer=None, pos=None):
+def scan_file(path, layer=None, pos=None, cut=None):
     """Einmal durch die Datei. Ergebnis (dict):
 
     layers: [{n, offset, line, z}] (1-basiert, Byte-Offset des Markers)
     state: Zustand unmittelbar VOR dem Marker der Schicht ``layer`` (oder
       None), bbox (alle Extrusionen davor), max_z, first_xy/first_z danach.
     layer_at_pos: Schicht, in der Byte ``pos`` liegt (für LAYER=auto).
+    cut: Byte-Offset einer Zeile mitten in einer Schicht (genaue Stelle):
+      Zustand unmittelbar VOR dieser Zeile; first_xy/first_z = Kopfposition
+      dort (Anfang der Bahn), dazu e_abs, Rückzug (retract) und das gerade
+      offene Objekt (EXCLUDE_OBJECT_START). Hat Vorrang vor ``layer``.
     """
     st = {"nozzle": None, "bed": None, "chamber": None, "fans": {},
           "tool": None, "tool_src": "", "e_mode": "M83", "pos_mode": "G90",
@@ -225,8 +241,12 @@ def scan_file(path, layer=None, pos=None):
     after = {"first_xy": None, "first_z": None}
     want_after = False
     layer_at_pos = None
+    cur_obj = None          # offenes EXCLUDE_OBJECT_START
+    retract = 0.0           # mm zurückgezogen (Rückzug ohne folgendes Wiederherstellen)
     offset = 0
     lineno = 0
+    if cut is not None:
+        layer = None
     with open(path, "rb") as f:
         for raw in f:
             lineno += 1
@@ -234,6 +254,14 @@ def scan_file(path, layer=None, pos=None):
             offset += len(raw)
             line = raw.decode("utf-8", "replace").rstrip("\r\n")
             s = line.strip()
+            if cut is not None and snap is None and line_off >= cut:
+                snap = {"state": json.loads(json.dumps(st)),
+                        "bbox": bbox, "obj_bbox": obj_bbox, "occ": dict(occ),
+                        "max_z": max_z, "z": z, "x": x, "y": y,
+                        "cut_layer": len(layers), "cut": line_off,
+                        "cut_line": lineno, "e_abs": e_abs,
+                        "retract": retract, "obj": cur_obj}
+                after = {"first_xy": [x, y], "first_z": z}
             if in_header:
                 if s == "" or s.startswith(";"):
                     if len(header) < 4000:
@@ -254,6 +282,9 @@ def scan_file(path, layer=None, pos=None):
                                 "occ": dict(occ),
                                 "max_z": max_z, "z": z, "x": x, "y": y}
                         want_after = True
+                    if snap is not None and "e_abs" not in snap:
+                        snap.update({"e_abs": e_abs, "retract": retract,
+                                     "obj": cur_obj})
                 elif pending_z is not None and s.startswith(";Z:"):
                     try:
                         pending_z["z"] = float(s[3:].strip())
@@ -298,10 +329,18 @@ def scan_file(path, layer=None, pos=None):
                 extr = False
                 if "E" in w:
                     if st["e_mode"] == "M83":
-                        extr = w["E"] > 0
+                        de = w["E"]
                     else:
-                        extr = w["E"] > e_abs
+                        de = w["E"] - e_abs
                         e_abs = w["E"]
+                    extr = de > 0
+                    xy = nx != x or ny != y
+                    if de < 0:
+                        retract += -de
+                    elif xy:
+                        retract = 0.0
+                    else:
+                        retract = max(0.0, retract - de)
                 if extr and (nx != x or ny != y) and _on_bed(x, y) \
                         and _on_bed(nx, ny):
                     # nur echte Bahnen auf dem Bett (Spülen am Schacht und
@@ -400,6 +439,10 @@ def scan_file(path, layer=None, pos=None):
                             break
                 # ADAPTIVE ist seit 23.10.2026 Standard (fehlt = 1)
                 st["adaptive"] = kv.get("ADAPTIVE", "1") not in ("0", "")
+            elif word == "EXCLUDE_OBJECT_START":
+                cur_obj = _kv(cmd).get("NAME")
+            elif word == "EXCLUDE_OBJECT_END":
+                cur_obj = None
             elif word == "EXCLUDE_OBJECT_DEFINE":
                 if len(defines) < 500:
                     defines.append(cmd)
@@ -411,6 +454,97 @@ def scan_file(path, layer=None, pos=None):
         snap.update(after)
         res["snap"] = snap
     return res
+
+
+def _seg_dist(px, py, ax, ay, bx, by):
+    dx, dy = bx - ax, by - ay
+    ll = dx * dx + dy * dy
+    t = 0.0 if ll < 1e-12 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / ll))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def locate_cut(path, pos_lo, pos_hi, live_xy, tol=CUT_TOL, tol_max=CUT_TOL_MAX):
+    """Genaue Abbruchstelle: die Zeile, deren Bahn (G0-G3 mit X/Y) durch die
+    gemessene Kopfposition ``live_xy`` (Dateikoordinaten) läuft.
+
+    Klipper liest voraus: ``pos_hi`` = Lesestand beim Messen, ``pos_lo`` =
+    Lesestand ``CUT_WINDOW_S`` davor – die ausgeführte Zeile liegt dazwischen.
+    Gibt es mehrere Treffer (Bahn kreuzt sich), gilt der FRÜHESTE: lieber ein
+    kurzes Stück doppelt als eine Lücke. -> dict(cut, layer, dist, line, z)
+    """
+    px, py = float(live_xy[0]), float(live_xy[1])
+    x = y = z = 0.0
+    pos_mode = "G90"
+    layer = 0
+    lz = None
+    pending = False
+    best = None            # (dist, off, line, layer, z)
+    first = None           # frühester Treffer <= tol
+    offset = 0
+    lineno = 0
+    with open(path, "rb") as f:
+        for raw in f:
+            lineno += 1
+            off = offset
+            offset += len(raw)
+            if off >= pos_hi:
+                break
+            s = raw.decode("utf-8", "replace").strip()
+            if s.startswith(";"):
+                if s == MARKER:
+                    layer += 1
+                    pending = True
+                elif pending and s.startswith(";Z:"):
+                    try:
+                        lz = float(s[3:].strip())
+                    except ValueError:
+                        lz = None
+                    pending = False
+                continue
+            cmd = s.split(";", 1)[0].strip()
+            if not cmd:
+                continue
+            word = cmd.split()[0].upper()
+            if word in ("G90", "G91"):
+                pos_mode = word
+                continue
+            if word == "G92":
+                w = _words(cmd)
+                x, y, z = w.get("X", x), w.get("Y", y), w.get("Z", z)
+                continue
+            if word not in ("G0", "G1", "G2", "G3"):
+                continue
+            w = _words(cmd)
+            if pos_mode == "G91":
+                nx, ny, nz = x + w.get("X", 0.0), y + w.get("Y", 0.0), z + w.get("Z", 0.0)
+            else:
+                nx, ny, nz = w.get("X", x), w.get("Y", y), w.get("Z", z)
+            if off >= pos_lo and (nx != x or ny != y):
+                if word in ("G2", "G3") and ("I" in w or "J" in w):
+                    pts = arc_points(x, y, nx, ny, w.get("I", 0.0), w.get("J", 0.0),
+                                     word == "G2", step=0.5)
+                else:
+                    pts = [(x, y), (nx, ny)]
+                d = min(_seg_dist(px, py, a[0], a[1], b[0], b[1])
+                        for a, b in zip(pts, pts[1:]))
+                rec = (d, off, lineno, layer, lz)
+                if best is None or d < best[0]:
+                    best = rec
+                if first is None and d <= tol:
+                    first = rec
+            x, y, z = nx, ny, nz
+    hit = first or best
+    if hit is None or hit[0] > tol_max:
+        raise ResumeError(
+            "genaue Abbruchstelle nicht gefunden (Kopf bei X%.1f Y%.1f liegt auf "
+            "keiner Bahn im Bereich Byte %d..%d%s) – LAYER=<n> angeben"
+            % (px, py, pos_lo, pos_hi,
+               "" if hit is None else ", nächste %.1f mm entfernt" % hit[0]))
+    if layer == 0 or hit[3] == 0:
+        raise ResumeError("Abbruchstelle liegt vor der ersten Schicht – Druck "
+                          "von vorn beginnen")
+    return {"cut": hit[1], "line": hit[2], "layer": hit[3], "z": hit[4],
+            "dist": round(hit[0], 3)}
 
 
 # ---------------------------------------------------------------------
@@ -518,6 +652,9 @@ def build_plan(scan, layer, mode, tilt="auto", safe_margin=SAFE_MARGIN_DEFAULT,
     snap = scan.get("snap")
     if snap is None:
         raise ResumeError("Zustand an Schicht %d nicht ermittelt" % layer)
+    if snap.get("cut") is not None and snap.get("cut_layer") != layer:
+        raise ResumeError("Stelle liegt in Schicht %s, nicht %d"
+                          % (snap.get("cut_layer"), layer))
     st = snap["state"]
     lz = layers[layer - 1]["z"]
     if lz is None:
@@ -530,6 +667,9 @@ def build_plan(scan, layer, mode, tilt="auto", safe_margin=SAFE_MARGIN_DEFAULT,
                           % (layer, st["nozzle"]))
     if snap["first_xy"] is None:
         raise ResumeError("nach dem Marker der Schicht %d keine X/Y-Fahrt" % layer)
+    if snap.get("cut") is not None and abs((snap["first_z"] or 0.0) - lz) > 1.0:
+        raise ResumeError("Stelle liegt nicht in Schichthöhe (Z %s statt %s) – "
+                          "LAYER=<n> angeben" % (_fmt(snap["first_z"]), _fmt(lz)))
     if layer > 1 and snap["bbox"] is None:
         raise ResumeError("vor Schicht %d keine Extrusion gefunden – Datei "
                           "unklar" % layer)
@@ -541,7 +681,10 @@ def build_plan(scan, layer, mode, tilt="auto", safe_margin=SAFE_MARGIN_DEFAULT,
             "safe_z": round(safe_z, 2), "top_z": round(top, 3),
             "state": st, "first_xy": snap["first_xy"],
             "first_z": snap["first_z"], "bbox": snap["bbox"],
-            "obj_bbox": snap["obj_bbox"], "warnings": []}
+            "obj_bbox": snap["obj_bbox"], "warnings": [],
+            "cut": snap.get("cut"), "cut_line": snap.get("cut_line"),
+            "e_abs": snap.get("e_abs", 0.0), "retract": snap.get("retract", 0.0),
+            "obj": snap.get("obj")}
     if st["tool"] is None:
         plan["warnings"].append("kein Werkzeugbefehl vor Schicht %d – das "
                                 "Filament im Kopf wird verwendet" % layer)
@@ -583,8 +726,11 @@ def build_preamble(plan, orig_name, prime=PRIME_DEFAULT,
     sz = _fmt(plan["safe_z"])
     L = []
     a = L.append
-    a("; K2-Wiedereinstieg %s (k2_resume): %s ab Schicht %d von %d (Z %s)"
-      % (VERSION, orig_name, plan["layer"], plan["total"], _fmt(plan["z"])))
+    genau = plan.get("cut") is not None
+    a("; K2-Wiedereinstieg %s (k2_resume): %s ab Schicht %d von %d (Z %s)%s"
+      % (VERSION, orig_name, plan["layer"], plan["total"], _fmt(plan["z"]),
+         ", genaue Stelle Zeile %s (Byte %s)" % (plan.get("cut_line"), plan["cut"])
+         if genau else ""))
     a("; Modus %s, sichere Fahrhöhe Z %s (höchster gedruckter Punkt %s)"
       % (plan["mode"], sz, _fmt(plan["top_z"])))
     for w in plan["warnings"]:
@@ -658,20 +804,50 @@ def build_preamble(plan, orig_name, prime=PRIME_DEFAULT,
     a("G1 Z%s F600" % sz)
     a("G0 X%s Y%s F12000" % (_fmt(fx), _fmt(fy)))
     zdown = plan["first_z"] if plan["first_z"] is not None else plan["z"]
-    zdown = max(zdown, plan["z"])
+    if not genau:
+        zdown = max(zdown, plan["z"])
     a("G1 Z%s F600" % _fmt(zdown))
+    if genau:
+        # Extruder auf den Stand der Datei an dieser Stelle: nach dem Vordrucken
+        # ist er um VORDRUCK_RETRACT zurückgezogen, die Datei erwartet
+        # plan["retract"] (0 = mitten im Drucken); absolute E: Zähler setzen
+        de = VORDRUCK_RETRACT - (plan.get("retract") or 0.0)
+        if abs(de) > 1e-4:
+            a("M83")
+            a("G1 E%s F2400" % _fmt(de))
+            a(st["e_mode"])
+        if st["e_mode"] == "M82":
+            a("G92 E%s" % _fmt(plan.get("e_abs") or 0.0))
+        if st.get("pos_mode") == "G91":
+            a("G91")
+    if plan.get("obj"):
+        a("EXCLUDE_OBJECT_START NAME=%s" % plan["obj"])
     if st["f"]:
         a("G1 F%s" % _fmt(st["f"]))
-    a("; ---- Originaldatei ab Schicht %d ----" % plan["layer"])
+    # Druckvorbereitung fertig: ab hier ist eine Pause eine Pause (k2_abbruch)
+    a("_PI_ABBRUCH_PUNKT AKTION=START_FERTIG")
+    if genau:
+        a("; ---- Originaldatei ab Zeile %s (Schicht %d) ----"
+          % (plan.get("cut_line"), plan["layer"]))
+    else:
+        a("; ---- Originaldatei ab Schicht %d ----" % plan["layer"])
     return L
 
 
 def write_resume(path, out_path, layer, mode, tilt="auto", prime=PRIME_DEFAULT,
-                 **kw):
-    scan = scan_file(path, layer=layer)
+                 cut=None, **kw):
+    """cut=None: ab Schichtanfang; cut=<Byte>: ab dieser Zeile (genaue Stelle)."""
+    scan = scan_file(path, layer=layer, cut=cut)
+    if cut is not None:
+        sn = scan.get("snap") or {}
+        if sn.get("cut") != cut:
+            raise ResumeError("Stelle Byte %d ist kein Zeilenanfang" % cut)
+        layer = sn.get("cut_layer") or 0
+        if layer < 1:
+            raise ResumeError("Stelle liegt vor der ersten Schicht")
     plan = build_plan(scan, layer, mode, tilt=tilt, **kw)
     pre = build_preamble(plan, os.path.basename(path), prime=prime)
-    start = scan["layers"][layer - 1]["offset"]
+    start = cut if cut is not None else scan["layers"][layer - 1]["offset"]
     tmp = out_path + ".tmp"
     with open(path, "rb") as src, open(tmp, "wb") as dst:
         for h in scan["header"]:
@@ -721,28 +897,31 @@ def layer_for_z(zs, z):
     return best[0] if best else None
 
 
-def out_name(fname, layer):
+def out_name(fname, layer, genau=False):
     stem = fname[:-6] if fname.lower().endswith(".gcode") else fname
-    stem = re.sub(r"_ab_schicht_\d+$", "", stem)
-    return "%s_ab_schicht_%d.gcode" % (stem, layer)
+    stem = re.sub(r"_ab_schicht_\d+(_genau)?$", "", stem)
+    return "%s_ab_schicht_%d%s.gcode" % (stem, layer, "_genau" if genau else "")
 
 
 def _cli(argv):
     """python3 k2_resume.py info|build JSON-Parameter -> JSON auf stdout."""
-    if len(argv) != 3 or argv[1] not in ("info", "build"):
-        sys.stderr.write("Aufruf: k2_resume.py info|build '<json>'\n")
+    if len(argv) != 3 or argv[1] not in ("info", "build", "locate"):
+        sys.stderr.write("Aufruf: k2_resume.py info|build|locate '<json>'\n")
         return 2
     p = json.loads(argv[2])
     try:
         if argv[1] == "info":
             res = info(p["path"], p.get("layer"), p.get("pos"))
+        elif argv[1] == "locate":
+            res = locate_cut(p["path"], p["pos_lo"], p["pos_hi"], p["live_xy"])
         else:
             kw = {k: p[k] for k in ("safe_margin", "probe_margin", "mesh_min",
                                     "mesh_max", "tilt_points", "home_center")
                   if k in p}
-            res = write_resume(p["path"], p["out"], p["layer"], p["mode"],
+            res = write_resume(p["path"], p["out"], p.get("layer"), p["mode"],
                                tilt=p.get("tilt", "auto"),
-                               prime=p.get("prime", PRIME_DEFAULT), **kw)
+                               prime=p.get("prime", PRIME_DEFAULT),
+                               cut=p.get("cut"), **kw)
         sys.stdout.write(json.dumps({"ok": True, "result": res}))
     except ResumeError as exc:
         sys.stdout.write(json.dumps({"ok": False, "error": str(exc)}))
@@ -750,6 +929,104 @@ def _cli(argv):
         sys.stdout.write(json.dumps({"ok": False,
                                      "error": "%s: %s" % (type(exc).__name__, exc)}))
     return 0
+
+
+# ---------------------------------------------------------------------
+# Druckstand (A): wo stand der Druck beim Abbruch? Reine Logik, getestet.
+# ---------------------------------------------------------------------
+STAND_VERSION = 1
+# Gründe, aus denen sich ein Druck fortsetzen lässt
+STAND_FORTSETZBAR = ("notaus", "stoerung", "abgebrochen", "fehler", "pause",
+                     "unterbrochen")
+UEBERGANG = {"paused": "pause", "cancelled": "abgebrochen",
+             "complete": "fertig", "error": "fehler", "standby": "beendet"}
+
+
+class Druckstand:
+    """Merkt sich laufend Dateistand + gemessene Kopfposition eines Drucks.
+
+    ``sample`` wird alle ~0,5 s gerufen. Ein neuer Stand entsteht nur, wenn
+    die Datei weiterläuft (Lesestand ändert sich) – steht sie (Makro wie
+    END_PRINT nach einem Abbruch, Warten auf Heizung, CFS-Wechsel), bleibt der
+    letzte Stand eingefroren: die Kopfposition dort gehört nicht zur Datei.
+    pos_lo = Lesestand ``window`` s vorher (Klipper liest höchstens so weit
+    voraus) – die gerade ausgeführte Zeile liegt zwischen pos_lo und pos_hi.
+    """
+
+    def __init__(self, window=CUT_WINDOW_S):
+        self.window = window
+        self.hist = []          # [(t, pos)] des laufenden Drucks
+        self.snap = None        # letzter Stand (dict) oder None
+
+    def sample(self, t, state, sd, live, origin, extra=None):
+        """-> True, wenn ein neuer Stand entstanden ist."""
+        path = sd.get("file_path")
+        if state != "printing" or not sd.get("is_active") or not path:
+            return False
+        pos = int(sd.get("file_position") or 0)
+        if self.snap is not None and self.snap.get("pfad") != path:
+            self.hist = []
+        if self.hist and self.hist[-1][1] == pos:
+            return False
+        self.hist.append((t, pos))
+        alt = [h for h in self.hist if h[0] <= t - self.window]
+        lo = alt[-1][1] if alt else self.hist[0][1]
+        # Verlauf kurz halten: ein Eintrag älter als das Fenster genügt
+        if len(alt) > 1:
+            self.hist = self.hist[len(alt) - 1:]
+        live = list(live or [0.0, 0.0, 0.0])[:3]
+        origin = list(origin or [0.0, 0.0, 0.0])[:3]
+        snap = {"version": STAND_VERSION, "grund": "laufend",
+                "datei": os.path.basename(path), "pfad": path,
+                "pos_lo": lo, "pos_hi": pos,
+                "kopf": [round(live[0] - origin[0], 3),
+                         round(live[1] - origin[1], 3),
+                         round(live[2] - origin[2], 3)],
+                "z_offset": round(origin[2], 4)}
+        snap.update(extra or {})
+        self.snap = snap
+        return True
+
+    def ende(self, grund, zeit):
+        """Druck verlassen (Pause/Abbruch/Ende/Not-Aus) -> Stand oder None."""
+        if self.snap is None:
+            return None
+        self.snap = dict(self.snap)
+        self.snap["grund"] = grund
+        self.snap["zeit"] = zeit
+        self.hist = []
+        return self.snap
+
+
+def stand_passt(stand, path):
+    """Gehört der gespeicherte Stand zu dieser Datei (Name, Größe, Zeit)?"""
+    if not stand or stand.get("pfad") != path or not os.path.isfile(path):
+        return False
+    st = os.stat(path)
+    return (stand.get("groesse") in (None, st.st_size)
+            and stand.get("mtime") in (None, int(st.st_mtime)))
+
+
+def stand_lesen(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) and d.get("version") == STAND_VERSION else None
+    except (OSError, ValueError):
+        return None
+
+
+def stand_schreiben(path, stand):
+    """Atomar + fsync (Stromausfall): tmp schreiben, dann umbenennen."""
+    d = os.path.dirname(path)
+    if d and not os.path.isdir(d):
+        os.makedirs(d, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(stand, f, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 # ---------------------------------------------------------------------
@@ -767,9 +1044,37 @@ class K2Resume:
                                             maxval=150.0)
         self.prime = config.getfloat("prime_mm", PRIME_DEFAULT, minval=0.,
                                      maxval=100.)
+        self.state_interval = config.getfloat("state_interval", 2.0,
+                                              minval=0.5, maxval=60.0)
+        self.bed_hold_min = config.getfloat("bed_hold_min", 60.0, minval=0.,
+                                            maxval=600.0)
+        self.state_file = None
+        if hasattr(config, "get"):
+            self.state_file = config.get("state_file", None)
+        if not self.state_file and hasattr(self.printer, "get_start_args"):
+            cfgf = (self.printer.get_start_args() or {}).get("config_file")
+            if cfgf:
+                self.state_file = os.path.join(os.path.dirname(cfgf), "k2",
+                                               "druckstand.json")
+        if self.state_file:
+            self.state_file = os.path.expanduser(self.state_file)
         self.z_home_at = None
         self.last = None
         self.busy = False
+        self.ds = Druckstand()
+        self.konsole = _K2K.Konsole(self.printer, "k2_resume", self.gcode) \
+            if _K2K is not None else None
+        self.stand = stand_lesen(self.state_file) if self.state_file else None
+        self._ps_state = None
+        self._last_write = 0.0
+        self._timer = None
+        self._aus = False           # Klipper im Shutdown: nichts mehr schreiben
+        self.hold = None            # {"temp", "bis"} Bett warm halten
+        self._hold_timer = None
+        if hasattr(self.printer, "register_event_handler"):
+            self.printer.register_event_handler("klippy:ready", self._ready)
+            self.printer.register_event_handler("klippy:shutdown",
+                                                self._shutdown)
         for name, fn, desc in (
                 ("KTWO_RESUME_INFO", self.cmd_info,
                  "Wiedereinstieg: Schichten/Zustand einer Datei (FILE= [LAYER=])"),
@@ -782,7 +1087,15 @@ class K2Resume:
                  "nur aus einer Wiedereinstiegs-Datei: G28 Z an X/Y"),
                 ("KTWO_RESUME_ZFIX", self.cmd_zfix,
                  "nur aus einer Wiedereinstiegs-Datei: Z-Referenz auf Bettmitte "
-                 "umrechnen")):
+                 "umrechnen"),
+                ("KTWO_RESUME_STAND", self.cmd_stand,
+                 "Wiedereinstieg: gespeicherten Druckstand (letzter Abbruch) zeigen"),
+                ("KTWO_RESUME_VERWERFEN", self.cmd_verwerfen,
+                 "Wiedereinstieg: gespeicherten Druckstand verwerfen, Bett "
+                 "nicht mehr warm halten"),
+                ("KTWO_RESUME_BETT_HALTEN", self.cmd_bett_halten,
+                 "Bett nach einem Abbruch warm halten (TEMP= [MIN=]), damit das "
+                 "Teil für eine Fortsetzung haftet")):
             self.gcode.register_command(name, fn, desc=desc)
 
     # --- Hilfen --------------------------------------------------------
@@ -853,6 +1166,188 @@ class K2Resume:
         return self._status("print_stats").get("state") in ("printing",
                                                             "paused")
 
+    # --- Druckstand (A) und Bett warm halten (C) ------------------------
+    def _messen(self, eventtime):
+        """Ein Messpunkt (Dateistand + gemessene Kopfposition)."""
+        sd = self._status("virtual_sdcard")
+        state = self._status("print_stats").get("state")
+        mr = self.printer.lookup_object("motion_report", None)
+        live = None
+        if mr is not None:
+            try:
+                live = list(mr.get_status(eventtime).get("live_position"))
+            except Exception:
+                live = None
+        if live is None:
+            return state, False
+        origin = list(self._status("gcode_move").get("homing_origin") or
+                      [0.0, 0.0, 0.0])
+        bett = self._status("heater_bed").get("target")
+        extra = {"schicht": (self._status("print_stats").get("info") or
+                             {}).get("current_layer"),
+                 "bett": bett, "duese": self._status("extruder").get("target")}
+        path = sd.get("file_path")
+        if path and os.path.isfile(path):
+            st = os.stat(path)
+            extra.update({"groesse": st.st_size, "mtime": int(st.st_mtime)})
+        return state, self.ds.sample(eventtime, state, sd, live, origin, extra)
+
+    def _stand_speichern(self, stand):
+        self.stand = stand
+        if not self.state_file or stand is None:
+            return
+        try:
+            stand_schreiben(self.state_file, stand)
+        except OSError as exc:
+            logging.exception("k2_resume: Druckstand nicht schreibbar")
+            if self.konsole is not None:
+                self.konsole.warnung(
+                    "Druckstand nicht schreibbar (%s) – nach einem Abbruch ist "
+                    "die genaue Stelle unbekannt (PRINT_FROM_LAYER LAYER=<n>)"
+                    % exc, schluessel="stand_schreiben", pause=600)
+
+    def _tick(self, eventtime):
+        if self._aus:
+            return self.reactor.NEVER
+        try:
+            state, neu = self._messen(eventtime)
+            prev = self._ps_state
+            self._ps_state = state
+            if state == "printing":
+                if prev != "printing" and self.hold is not None:
+                    self.hold = None        # neuer Druck führt das Bett selbst
+                if neu and eventtime - self._last_write >= self.state_interval:
+                    st = dict(self.ds.snap)
+                    st["zeit"] = time.time()
+                    self._stand_speichern(st)
+                    self._last_write = eventtime
+            elif prev == "printing" and state in UEBERGANG:
+                st = self.ds.ende(UEBERGANG[state], time.time())
+                if st is not None:
+                    self._stand_speichern(st)
+        except Exception:
+            logging.exception("k2_resume: Druckstand")
+        return eventtime + (0.5 if self._ps_state == "printing" else 1.0)
+
+    def _ready(self):
+        st = self.stand
+        if st and st.get("grund") == "laufend":
+            # Klipper/Pi neu gestartet, ohne dass der Druck geendet hat
+            # (Stromausfall, Absturz, RESTART im Druck)
+            st = dict(st)
+            st["grund"] = "unterbrochen"
+            self._stand_speichern(st)
+        if self._timer is None:
+            self._timer = self.reactor.register_timer(self._tick,
+                                                      self.reactor.NOW)
+        # C: nach einem Not-Aus (nur der Knopf, keine Störung) das Bett wieder
+        # warm machen, solange die Haltezeit seit dem Abbruch läuft
+        st = self.stand
+        if st and st.get("grund") == "notaus" and (st.get("bett") or 0) > 0:
+            rest = self.bed_hold_min * 60.0 - (time.time() - (st.get("zeit") or 0))
+            if rest > 0:
+                temp = float(st["bett"])
+                self.reactor.register_callback(
+                    lambda e: self._bett_an(temp, rest, "nach dem Not-Aus"))
+
+    def _shutdown(self):
+        if self._aus:
+            return
+        self._aus = True
+        try:
+            now = self.reactor.monotonic()
+            self._messen(now)       # Kopfposition im Moment des Abbruchs
+            msg = ""
+            if hasattr(self.printer, "get_state_message"):
+                msg = self.printer.get_state_message()[0] or ""
+            # Not-Aus = Knopf (Moonraker emergency_stop) oder M112; alles andere
+            # (Heizung, MCU-Verbindung …) ist eine Störung -> Bett NICHT wieder an
+            grund = "notaus" if ("webhooks request" in msg or "M112" in msg) \
+                else "stoerung"
+            if self._ps_state in ("printing", "paused"):
+                st = self.ds.ende(grund, time.time())
+                if st is not None:
+                    st["meldung"] = msg.strip().splitlines()[0][:200] if msg else ""
+                    self._stand_speichern(st)
+        except Exception:
+            logging.exception("k2_resume: Druckstand beim Abschalten")
+
+    def _bett_an(self, temp, sekunden, why):
+        self.hold = {"temp": temp, "bis": self.reactor.monotonic() + sekunden}
+        try:
+            self.gcode.run_script("M140 S%.1f" % temp)
+        except Exception:
+            logging.exception("k2_resume: Bett warm halten")
+            self.hold = None
+            return
+        if self._hold_timer is None:
+            self._hold_timer = self.reactor.register_timer(self._hold_ende,
+                                                           self.hold["bis"])
+        else:
+            self.reactor.update_timer(self._hold_timer, self.hold["bis"])
+        self.gcode.respond_info(
+            "[k2_resume] Bett bleibt %s %.0f min auf %.0f °C, damit das Teil für "
+            "eine Fortsetzung haftet (PRINT_FROM_LAYER). Sofort aus: "
+            "KTWO_RESUME_VERWERFEN" % (why, sekunden / 60.0, temp))
+
+    def _hold_ende(self, eventtime):
+        h, self.hold = self.hold, None
+        if h is not None and not self._print_active():
+            bt = self._status("heater_bed").get("target")
+            if bt is not None and abs(float(bt) - h["temp"]) < 0.5:
+                try:
+                    self.gcode.run_script("M140 S0")
+                    self.gcode.respond_info("[k2_resume] Haltezeit vorbei – "
+                                            "Bett aus")
+                except Exception:
+                    logging.exception("k2_resume: Bett aus")
+        return self.reactor.NEVER
+
+    def cmd_bett_halten(self, gcmd):
+        temp = gcmd.get_float("TEMP", 0.0, minval=0.0, maxval=130.0)
+        minuten = gcmd.get_float("MIN", self.bed_hold_min, minval=0.0,
+                                 maxval=600.0)
+        if temp <= 0 or minuten <= 0:
+            return
+        self.hold = {"temp": temp,
+                     "bis": self.reactor.monotonic() + minuten * 60.0}
+        self.gcode.run_script_from_command("M140 S%.1f" % temp)
+        if self._hold_timer is None:
+            self._hold_timer = self.reactor.register_timer(self._hold_ende,
+                                                           self.hold["bis"])
+        else:
+            self.reactor.update_timer(self._hold_timer, self.hold["bis"])
+        gcmd.respond_info(
+            "[k2_resume] Bett bleibt %.0f min auf %.0f °C, damit das Teil für "
+            "eine Fortsetzung haftet (PRINT_FROM_LAYER). Sofort aus: "
+            "KTWO_RESUME_VERWERFEN" % (minuten, temp))
+
+    def cmd_verwerfen(self, gcmd):
+        if self.stand:
+            st = dict(self.stand)
+            st["grund"] = "verworfen"
+            self._stand_speichern(st)
+        if self.hold is not None and not self._print_active():
+            self.hold = None
+            self.gcode.run_script_from_command("M140 S0")
+        gcmd.respond_info("[k2_resume] Druckstand verworfen, Bett aus")
+
+    def cmd_stand(self, gcmd):
+        st = self.stand
+        if not st:
+            gcmd.respond_info("[k2_resume] kein gespeicherter Druckstand")
+            return
+        alter = (time.time() - (st.get("zeit") or time.time())) / 60.0
+        k = st.get("kopf") or [0, 0, 0]
+        gcmd.respond_info(
+            "[k2_resume] Druckstand: %s, Grund %s vor %.0f min, Schicht %s, Kopf "
+            "X%s Y%s Z%s, Datei Byte %s..%s%s" % (
+                st.get("datei"), st.get("grund"), alter, st.get("schicht"),
+                _fmt(k[0]), _fmt(k[1]), _fmt(k[2]), st.get("pos_lo"),
+                st.get("pos_hi"),
+                " – fortsetzen: PRINT_FROM_LAYER" if
+                st.get("grund") in STAND_FORTSETZBAR else ""))
+
     # --- G-Code ---------------------------------------------------------
     def cmd_info(self, gcmd):
         name, path = self._file(gcmd)
@@ -890,17 +1385,35 @@ class K2Resume:
         if self._print_active():
             raise gcmd.error("[k2_resume] Druck läuft/pausiert – erst beenden "
                              "(pausiert: RESUME statt Wiedereinstieg)")
-        name, path = self._file(gcmd)
+        st = self.stand if (self.stand or {}).get("grund") in \
+            STAND_FORTSETZBAR else None
+        if gcmd.get("FILE", None) is None:
+            if st is None:
+                raise gcmd.error("[k2_resume] kein gespeicherter Abbruch – "
+                                 "FILE=<datei> angeben")
+            name = st.get("datei") or ""
+            path = os.path.join(self._sd_dir(), name)
+            if not os.path.isfile(path):
+                raise gcmd.error("[k2_resume] Datei %s des letzten Abbruchs "
+                                 "nicht mehr da" % name)
+        else:
+            name, path = self._file(gcmd)
         raw = str(gcmd.get("LAYER", "")).strip().lower()
         pos = None
         zwant = gcmd.get_float("Z", None)
+        genau = gcmd.get_int("GENAU", 1) and raw in ("", "auto") and zwant is None
         if raw not in ("", "auto") and not raw.isdigit():
             raise gcmd.error("[k2_resume] LAYER=<n>|auto")
+        passt = st is not None and stand_passt(st, path) and bool(st.get("kopf"))
+        if not passt:
+            genau = False
         if raw in ("", "auto"):
             sd = self._status("virtual_sdcard")
             if sd.get("file_path") and os.path.basename(sd["file_path"]) == name \
                     and sd.get("file_position"):
                 pos = sd["file_position"]
+            elif passt:
+                pos = st.get("pos_hi")
             if pos is None and zwant is None:
                 raise gcmd.error("[k2_resume] LAYER=<n> oder Z=<mm> angeben "
                                  "(Abbruchstelle unbekannt)")
@@ -917,8 +1430,16 @@ class K2Resume:
         if tilt not in ("auto", "1", "0"):
             raise gcmd.error("[k2_resume] TILT=auto|1|0")
         self.busy = True
+        cut = None
+        loc = None
         try:
-            if raw in ("", "auto"):
+            if genau:
+                loc = self._run_child("locate", {
+                    "path": path, "pos_lo": st["pos_lo"], "pos_hi": st["pos_hi"],
+                    "live_xy": st["kopf"][:2]})
+                cut = loc["cut"]
+                layer = loc["layer"]
+            elif raw in ("", "auto"):
                 r = self._run_child("info", {"path": path, "pos": pos})
                 layer = r.get("layer_at_pos") if pos is not None else None
                 if layer is None and zwant is not None:
@@ -928,18 +1449,19 @@ class K2Resume:
                                       "LAYER=<n> angeben")
             else:
                 layer = int(raw)
-            out = out_name(name, layer)
+            out = out_name(name, layer, genau=cut is not None)
             params = dict(self._cfg_kw())
             params.update({"path": path,
                            "out": os.path.join(self._sd_dir(), out),
                            "layer": layer, "mode": mode, "tilt": tilt,
-                           "prime": self.prime})
+                           "prime": self.prime, "cut": cut})
             plan = self._run_child("build", params)
         except ResumeError as exc:
             raise gcmd.error("[k2_resume] %s" % exc)
         finally:
             self.busy = False
         self.last = {"file": out, "layer": plan["layer"], "z": plan["z"],
+                     "genau": cut is not None, "cut": cut,
                      "mode": plan["mode"], "safe_z": plan["safe_z"],
                      "probe_xy": plan.get("probe_xy"),
                      "tilt": plan.get("tilt"), "warnings": plan["warnings"]}
@@ -947,6 +1469,16 @@ class K2Resume:
                  "Modus %s, sichere Fahrhöhe Z %s" % (
                      out, plan["layer"], plan["total"], _fmt(plan["z"]),
                      plan["mode"], _fmt(plan["safe_z"]))]
+        if loc is not None:
+            lines.append("Genaue Stelle: Zeile %d in Schicht %d (Kopf lag %.2f mm "
+                         "neben dieser Bahn) – es wird nur diese eine Bahn "
+                         "doppelt gefahren" % (loc["line"], loc["layer"],
+                                               loc["dist"]))
+        else:
+            lines.append("WARNUNG: Einstieg am Schichtanfang – ein schon "
+                         "gedruckter Teil der Schicht %d wird noch einmal "
+                         "überfahren (Düse kann am Teil hängen bleiben)"
+                         % plan["layer"])
         if plan.get("probe_xy"):
             lines.append("Z-Antasten neben dem Teil bei X%s Y%s, Z_TILT_ADJUST: "
                          "%s (%s)" % (_fmt(plan["probe_xy"][0]),
@@ -1028,8 +1560,12 @@ class K2Resume:
                           "Bettmitte umgerechnet: %+.3f mm" % (x, y, adj))
 
     def get_status(self, eventtime):
+        st = self.stand or {}
         return {"z_home_at": self.z_home_at, "busy": self.busy,
-                "last": self.last}
+                "last": self.last,
+                "stand": {k: st.get(k) for k in ("datei", "grund", "schicht",
+                                                 "zeit")} if st else None,
+                "bett_halten": self.hold is not None}
 
 
 def load_config(config):

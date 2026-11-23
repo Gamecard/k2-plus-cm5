@@ -67,6 +67,9 @@ TRAEGER_DATEIEN="install-traeger.sh config-txt-traeger.txt k2-traeger-ina226-ove
   README-traeger-alpha1.md can0/80-k2-can0.network can0/80-k2-can0.rules can0/k2-can0-nm.conf"
 KIOSK_DATEIEN="kiosk-start.sh display-ruhe.py k2-kiosk.service k2-display-ruhe.service LIESMICH.md"
 cp -r "$REPO/pi-host/traeger-alpha1" "$P/traeger-alpha1"
+# Filament-Seite „CFS-Fächer“ (install.sh: ~/cfs-faecher/, Menüeintrag, nginx /cfs/)
+mkdir -p "$P/cfs-faecher"
+cp "$REPO/pi-host/cfs-faecher/index.html" "$REPO/pi-host/cfs-faecher/navi.json" "$P/cfs-faecher/"
 mkdir -p "$P/kiosk"
 for f in $KIOSK_DATEIEN; do cp "$REPO/pi-host/kiosk/$f" "$P/kiosk/"; done
 find "$P/traeger-alpha1" "$P/kiosk" \( -name '*.bak*' -o -name '*~' \) -print -delete | sed 's#^#  ausgeschlossen: #'
