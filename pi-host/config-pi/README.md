@@ -156,6 +156,43 @@ Schicht, desto stärker ziehen sich die Ecken hoch („Warping“).
    - Setzt jemand das Bett-Soll vorher selbst (Creality Print schreibt in Schicht 2 `M140 S<Soll>`, oder eine Eingabe
      in Mainsail), lässt der Zeitgeber es dabei und endet.
    - Ohne laufenden Druck (Ende, Abbruch) endet er ebenfalls; `END_PRINT` und `_PI_RESET_STATE` löschen den Merker.
+4. **Kammerlüfter nach dem Druck** (Abluftlüfter hinten, `temperature_fan chamber_fan`, ergänzt 17.11.2026):
+   `END_PRINT` schickt wie das Original `M141 S0`. Das schaltet die Kammerheizung aus und setzt das Kühl-Ziel des
+   Abluftlüfters auf 35 °C: Nach PLA/PETG bläst er die warme Kammer auf 35 °C herunter und bleibt dann stehen.
+   Nach Hochtemperatur-Material bleibt er stattdessen **aus** (Kühl-Ziel 0), damit die Kammer langsam abkühlt.
+   Schnelles Abkühlen von etwa 50 auf 35 °C, während das Teil noch auf der Platte liegt, erzeugt Spannung im Teil
+   (Ecken heben sich, Risse zwischen den Schichten). Konsole: „END_PRINT: Hochtemperatur-Material – Kammerlüfter
+   bleibt aus, die Kammer kühlt langsam ab“.
+   - Als Hochtemperatur-Druck gilt am Druckende: Merker `hoch_druck` aus `START_PRINT` (Regel oben) **oder** die
+     Kammerheizung heizt noch (Soll über 40 °C, z. B. bei `M141 S50` ohne `M191` vor `START_PRINT`).
+   - Dasselbe gilt für den Abbruch (`CANCEL_PRINT` → `END_PRINT`) und das Aufräumen nach einem Druckfehler
+     (`_PI_RESET_STATE`).
+   - Der nächste `START_PRINT` ohne Hochtemperatur-Material stellt das Kühl-Ziel wieder auf 35 °C, wenn es auf 0
+     steht und die Kammerheizung aus ist. Ein PLA-Druck ohne `M141` in der Datei wird also weiter gekühlt.
+   - Ein Klipper-Neustart setzt das Kühl-Ziel ebenfalls auf 35 °C (`target_temp` in `printer.cfg`).
+5. **Bauteillüfter höchstens 30 %** (`hoch_luefter_max`, ergänzt 17.11.2026). Das Creality-Profil „Generic ASA @K2 Plus“
+   kühlt bei Schichten unter 40 s mit bis zu 80 % und an Überhängen mit 80 %. Der Lüfter des K2 ist sehr stark: Die
+   Außenwände kühlen dann so schnell ab, dass sie schrumpfen und die Ecken von der Platte ziehen. `M106 P0` (auch ohne
+   `P`) wird deshalb bei Hochtemperatur-Material auf 30 % der S-Skala gekappt (S 204 → 76,5). Beispiel: Die Datei
+   verlangt 80 %, der Lüfter läuft mit 30 %. Werte darunter bleiben, wie sie sind. Einmal pro Druck steht in der Konsole
+   „Hochtemperatur-Material: Bauteillüfter auf höchstens 30 % begrenzt (Datei verlangt 80 %)“.
+   - Nicht betroffen: Seitenlüfter (`P2`), Kammerlüfter (`P1`) und eigene Kühlung der Makros, die `M106 … R1`
+     schicken (Abkühlen nach der Vorextrusion beim Fortsetzen). Nach dem Druckende kühlt `END_PRINT` die Düse
+     wieder ungebremst.
+   - Abschalten: `hoch_luefter_max` auf 100 setzen.
+6. **Bett im ganzen Druck mindestens 100 °C** (`hoch_bett_min`, ergänzt 17.11.2026). Das Profil druckt ASA mit 90 °C.
+   `START_PRINT` nimmt als Druck-Soll das Höhere von Datei-Wert und `hoch_bett_min`. Die erste Schicht wird nie
+   kälter als das (ASA 90 → ganzer Druck 100 °C, ABS 100 → erste Schicht 110, danach 100). Weil Creality Print in
+   Schicht 2 selbst `M140 S90` schreibt, prüft der Wächter **`[delayed_gcode _PI_HOCH_BETT]`** alle 5 s: Liegt das
+   Bett-Soll über 0, aber unter `hoch_bett_min`, setzt er es wieder auf `hoch_bett_min` und meldet das. Das gilt auch
+   für eine Eingabe in Mainsail. Soll 0 (Bett aus) bleibt, und am Druckende endet der Wächter.
+   - Abschalten: `hoch_bett_min` auf 0 setzen.
+
+**Warum im Drucker statt im Slicer:** Normalerweise gibt der Slicer Lüfter und Bett vor. Hier sollen die Slicer-Profile
+auf vielen Rechnern unverändert bleiben, deshalb korrigiert der Drucker Hochtemperatur-Drucke selbst. Der Preis dafür:
+- Die Vorschau und die Zeitschätzung des Slicers kennen die Korrektur nicht.
+- Wer bei ASA bewusst stärker kühlen will, muss die Variable ändern.
+Jede Korrektur steht deshalb in der Konsole.
 
 **Einstellungen** (Variablen in `[gcode_macro _PI_MESH_STATUS]`, `macros.cfg`):
 

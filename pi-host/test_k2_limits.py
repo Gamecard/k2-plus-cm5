@@ -986,7 +986,8 @@ def test_makros():
                "kammer_start_min_hoch": 45, "hoch_duese_min": 250,
                "hoch_kammer_min": 45, "bett_erste_schicht_plus": 10,
                "bett_erste_schicht_max": 110, "bett_erste_schicht": 0,
-               "bett_erhoeht": 0, "bett_phase": 0}
+               "bett_erhoeht": 0, "bett_phase": 0, "hoch_druck": 0,
+               "hoch_luefter_max": 30, "hoch_luefter_gemeldet": 0, "hoch_bett_min": 100}
     p_vor["gcode_macro _PI_MESH_STATUS"] = dict(ms_voll)
     lines_h, _m = TB._render(env, macros, "_PI_KAMMER_WARTEN", p_vor, {"HOCH": "1"})
     check("_PI_KAMMER_WARTEN HOCH=1: wartet bis 45 °C, heizt weiter auf 50 °C",
@@ -1016,12 +1017,20 @@ def test_makros():
           "M140 S100.0" in ls and "M190 S100.0" in ls
           and "_PI_KAMMER_WARTEN HOCH=1" in ls
           and "M140 S90.0" not in ls, ls)
-    check("START_PRINT ASA: Merker + Rückstell-Zeitgeber am Ende",
-          "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_erste_schicht VALUE=90.0" in ls
-          and "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_erhoeht VALUE=100.0" in ls
+    check("START_PRINT ASA 90: Bett im ganzen Druck 100 (Wächter), kein Erste-Schicht-Zeitgeber",
+          "UPDATE_DELAYED_GCODE ID=_PI_HOCH_BETT DURATION=5" in ls
+          and not any("_PI_BETT_ERSTE_SCHICHT" in l for l in ls)
+          and any("mindestens 100" in m and "Datei: 90" in m for m in ms_)
+          and any("Bauteillüfter höchstens 30" in m for m in ms_), (ls[-14:], ms_))
+    ls, ms_ = start(260, 100, 50)
+    check("START_PRINT ABS 100: erste Schicht 110, danach 100 (Zeitgeber + Wächter)",
+          "M140 S110.0" in ls and "M190 S110.0" in ls
+          and "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_erste_schicht VALUE=100.0" in ls
+          and "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_erhoeht VALUE=110.0" in ls
           and "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=bett_phase VALUE=1" in ls
           and "UPDATE_DELAYED_GCODE ID=_PI_BETT_ERSTE_SCHICHT DURATION=5" in ls
-          and any("erste Schicht 100" in m for m in ms_), (ls[-14:], ms_))
+          and "UPDATE_DELAYED_GCODE ID=_PI_HOCH_BETT DURATION=5" in ls
+          and any("erste Schicht 110" in m for m in ms_), (ls[-14:], ms_))
     for ext, bed, kw, name in ((220, 50, 0, "PLA"), (250, 70, 0, "PETG"),
                                (250, 70, 35, "PETG mit M141 35"),
                                (260, 90, 0, "ASA ohne M191 (keine Kammer)")):
@@ -1029,7 +1038,8 @@ def test_makros():
         check("START_PRINT %s: Bett unverändert %d °C, HOCH=0, kein Zeitgeber" % (name, bed),
               ("M140 S%.1f" % bed) in ls and ("M190 S%.1f" % bed) in ls
               and "_PI_KAMMER_WARTEN HOCH=0" in ls
-              and not any("_PI_BETT_ERSTE_SCHICHT" in l for l in ls), ls)
+              and not any("_PI_BETT_ERSTE_SCHICHT" in l for l in ls)
+              and not any("_PI_HOCH_BETT" in l for l in ls), ls)
     ls, _m = start(260, 110, 50)
     check("START_PRINT PC Bett 110: nicht über 110 °C (bett_erste_schicht_max)",
           "M140 S110.0" in ls and not any("_PI_BETT_ERSTE_SCHICHT" in l for l in ls), ls)
@@ -1038,11 +1048,123 @@ def test_makros():
           "M140 S110.0" in ls and "M190 S110.0" in ls, ls)
     ls, _m = start(260, 0, 50)
     check("START_PRINT BED_TEMP=0: bleibt kalt", "M140 S0.0" in ls
-          and not any("_PI_BETT_ERSTE_SCHICHT" in l for l in ls), ls)
+          and not any("_PI_BETT_ERSTE_SCHICHT" in l for l in ls)
+          and not any("_PI_HOCH_BETT" in l for l in ls), ls)
     for name in ("END_PRINT", "_PI_RESET_STATE"):
         src = macros[name][0]
         check("%s setzt bett_erste_schicht zurück" % name,
               "VARIABLE=bett_erste_schicht VALUE=0" in src, name)
+
+    # Kammerlüfter nach dem Druck (17.11.2026): nach Hochtemperatur-Material aus
+    ls, _m = start(260, 90, 50)
+    check("START_PRINT ASA: Merker hoch_druck=1",
+          "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=hoch_druck VALUE=1" in ls, ls)
+    ls, _m = start(220, 50, 0)
+    check("START_PRINT PLA: Merker hoch_druck=0",
+          "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=hoch_druck VALUE=0" in ls, ls)
+    tf35 = "SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=chamber_fan TARGET=35"
+    tf0 = "SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=chamber_fan TARGET=0"
+
+    def start_tf(ext, bed, kw, tft, kht):
+        pr = TB._rprinter(param, kcfg)
+        pr["gcode_macro _PI_MESH_STATUS"] = dict(ms_voll, kammer_warten=kw)
+        pr["z_tilt"] = {"applied": True}
+        pr["temperature_fan chamber_fan"] = {"target": tft, "temperature": 30.0}
+        pr["heater_generic chamber_heater"] = {"target": kht, "temperature": 30.0}
+        return TB._render(env, macros, "START_PRINT", pr,
+                          {"EXTRUDER_TEMP": str(ext), "BED_TEMP": str(bed)})[0]
+    check("START_PRINT PLA nach ASA (Kühl-Ziel 0): Kühl-Ziel wieder 35",
+          tf35 in start_tf(220, 50, 0, 0.0, 0.0))
+    check("START_PRINT PLA mit M141 S30 (Kühl-Ziel 30): bleibt",
+          tf35 not in start_tf(220, 50, 0, 30.0, 0.0))
+    check("START_PRINT ASA (Kammerheizung 50): Kühl-Ziel unberührt",
+          tf35 not in start_tf(260, 90, 50, 0.0, 50.0))
+    check("START_PRINT Kammerheizung an ohne HOCH: Kühl-Ziel unberührt",
+          tf35 not in start_tf(220, 60, 0, 0.0, 50.0))
+
+    def ende(name, hd, kht):
+        pr = TB._rprinter(param, kcfg)
+        pr["gcode_macro _PI_MESH_STATUS"] = dict(ms_voll, hoch_druck=hd)
+        pr["heater_generic chamber_heater"] = {"target": kht, "temperature": 50.0}
+        pr["toolhead"]["homed_axes"] = ""
+        pr["k2_box"]["change_enabled"] = False
+        return TB._render(env, macros, name, pr, {})
+    for name in ("END_PRINT", "_PI_RESET_STATE"):
+        ls, ms_ = ende(name, 1, 0.0)
+        check("%s nach ASA (Merker): M141 S0, danach Kühl-Ziel 0, Merker gelöscht" % name,
+              "M141 S0" in ls and tf0 in ls and ls.index(tf0) > ls.index("M141 S0")
+              and "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=hoch_druck VALUE=0" in ls,
+              (ls, ms_))
+        ls, _m = ende(name, 0, 50.0)
+        check("%s mit Kammerheizung 50 ohne Merker: Kühl-Ziel 0" % name, tf0 in ls, ls)
+        ls, _m = ende(name, 0, 0.0)
+        check("%s nach PLA: nur M141 S0 (Kühlen auf 35 wie Stock)" % name,
+              "M141 S0" in ls and tf0 not in ls, ls)
+
+    # Bauteillüfter-Grenze (17.11.2026)
+    def m106(params, hd=1, gem=0, lmax=30):
+        pr = TB._rprinter(param, kcfg)
+        pr["gcode_macro _PI_MESH_STATUS"] = dict(ms_voll, hoch_druck=hd,
+                                                 hoch_luefter_gemeldet=gem,
+                                                 hoch_luefter_max=lmax)
+        return TB._render(env, macros, "M106", pr, params)
+    mn = float(param["fan0_min"])
+    def pin(sv):
+        return "SET_PIN PIN=fan0 VALUE=%s" % (mn + (255 - mn) / 255 * sv)
+    ls, ms_ = m106({"S": "204"})
+    check("M106 S204 bei ASA: auf 30 %% (S76.5) gekappt, Meldung + Merker",
+          pin(76.5) in ls
+          and "SET_GCODE_VARIABLE MACRO=_PI_MESH_STATUS VARIABLE=hoch_luefter_gemeldet VALUE=1" in ls
+          and any("höchstens 30" in m and "80" in m for m in ms_), (ls, ms_))
+    ls, ms_ = m106({"S": "204"}, gem=1)
+    check("M106 S204 bei ASA, schon gemeldet: gekappt ohne neue Meldung",
+          pin(76.5) in ls and not ms_ and not any("gemeldet" in l for l in ls), (ls, ms_))
+    ls, ms_ = m106({"S": "50"})
+    check("M106 S50 bei ASA (unter der Grenze): unverändert", pin(50.0) in ls and not ms_, ls)
+    ls, _m = m106({})
+    check("M106 ohne S bei ASA: 255 -> gekappt", pin(76.5) in ls, ls)
+    ls, _m = m106({"S": "127", "R": "1"})
+    check("M106 S127 R1 (eigene Kühlung) bei ASA: nicht gekappt", pin(127.0) in ls, ls)
+    ls, _m = m106({"S": "204"}, hd=0)
+    check("M106 S204 bei PLA: nicht gekappt", pin(204.0) in ls, ls)
+    ls, _m = m106({"P": "2", "S": "255"})
+    check("M106 P2 S255 bei ASA: Seitenlüfter nicht betroffen",
+          any(l.startswith("SET_PIN PIN=fan2 VALUE=255") for l in ls), ls)
+    ls, _m = m106({"S": "204"}, lmax=100)
+    check("M106 S204 bei ASA, hoch_luefter_max 100: keine Grenze", pin(204.0) in ls, ls)
+    cfg0 = open(os.path.join(_HERE, "config-pi", "macros.cfg"), encoding="utf-8").read()
+    check("RESUME-Vorextrusion kühlt mit R1 (ungebremst)",
+          "M106 P0 S{p.resume_cool_fan} R1" in cfg0)
+
+    # Wächter _PI_HOCH_BETT
+    import jinja2
+    a0 = cfg0.index("[delayed_gcode _PI_HOCH_BETT]")
+    blk0 = cfg0[a0:cfg0.index("\n[", a0 + 1)]
+    hb = "\n".join(l.strip() for l in blk0.split("gcode:", 1)[1].splitlines())
+
+    def hbett(tgt, hd=1, state="printing", bmin=100):
+        msgs = []
+        pr = {"gcode_macro _PI_MESH_STATUS": dict(ms_voll, hoch_druck=hd, hoch_bett_min=bmin),
+              "heater_bed": {"target": tgt}, "print_stats": {"state": state}}
+        out = jinja2.Environment("{%", "%}", "{", "}").from_string(hb).render(
+            printer=pr, action_respond_info=lambda m: msgs.append(m) or "")
+        return [l.strip() for l in out.split("\n")
+                if l.strip() and not l.strip().startswith("#")], msgs
+    w = "UPDATE_DELAYED_GCODE ID=_PI_HOCH_BETT DURATION=5"
+    ls, ms_ = hbett(90.0)
+    check("Bett-Wächter: Datei M140 S90 -> 100, weiter", ls == ["M140 S100.0", w] and ms_, (ls, ms_))
+    ls, ms_ = hbett(100.0)
+    check("Bett-Wächter: 100 -> nichts, weiter", ls == [w] and not ms_, ls)
+    ls, _m = hbett(110.0)
+    check("Bett-Wächter: 110 (höher) -> nichts, weiter", ls == [w], ls)
+    ls, _m = hbett(0.0)
+    check("Bett-Wächter: Soll 0 bleibt 0", ls == [w], ls)
+    ls, _m = hbett(90.0, state="complete")
+    check("Bett-Wächter ohne Druck: endet", ls == [], ls)
+    ls, _m = hbett(90.0, hd=0)
+    check("Bett-Wächter ohne Merker: endet", ls == [], ls)
+    ls, _m = hbett(90.0, bmin=0)
+    check("Bett-Wächter hoch_bett_min 0: aus", ls == [], ls)
 
     # [delayed_gcode _PI_BETT_ERSTE_SCHICHT]
     cfg = open(os.path.join(_HERE, "config-pi", "macros.cfg"), encoding="utf-8").read()
