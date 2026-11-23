@@ -701,11 +701,17 @@ def test_texte():
     werte = dict(fc.items("k2_dateipruefung"))
     check("k2-module.cfg: nur bekannte Optionen",
           set(werte) <= {"aktiv", "erlaubte_modelle", "slicer_profil",
-                         "bambu_befehle"}, werte)
+                         "bambu_befehle", "klipper_generisch"}, werte)
+    # Fremde Profile immer sperren, auch das allgemeine Klipper-Profil
+    # („Generic Klipper Printer“).
+    check("k2-module.cfg: klipper_generisch False (fremde Profile gesperrt)",
+          werte.get("klipper_generisch") == "False", werte)
     werte["aktiv"] = werte["aktiv"] == "True"
+    werte["klipper_generisch"] = werte.get("klipper_generisch") == "True"
     mod = m.load_config(FakeConfig(pr, werte))
-    check("k2-module.cfg: Werte = Defaults", mod.aktiv
-          and mod.erlaubte == ["K2"] and mod.befehle == m.BAMBU_BEFEHLE)
+    check("k2-module.cfg: Werte = Defaults, generisch gesperrt", mod.aktiv
+          and mod.erlaubte == ["K2"] and mod.befehle == m.BAMBU_BEFEHLE
+          and mod.generisch is False)
 
     alle = ""
     for f in sorted(glob.glob(os.path.join(HIER, "config-pi", "*.cfg"))):

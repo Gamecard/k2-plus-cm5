@@ -128,3 +128,21 @@ liegen sonst evtl. nicht mittig), ob die Düse schon **vor** START_PRINT
 aufgeheizt wird (tropft beim Referenzieren, PrTouch tastet heiß), und dass
 K2-Geschwindigkeiten und der CFS-Mehrfarbwechsel fehlen. Fehlt eine
 Bedingung, wird wie bisher abgelehnt. Abschalten: `klipper_generisch: False`.
+
+## Nachtrag 23.11.2026: allgemeine Klipper-Profile werden abgelehnt
+
+Die mitgelieferte `config-pi/k2-module.cfg` setzt jetzt `klipper_generisch: False`.
+Damit startet auch eine Datei aus einem allgemeinen Klipper-Profil nicht mehr,
+sondern bricht mit derselben Meldung ab wie jedes andere fremde Druckerprofil, zum
+Beispiel:
+
+```
+!! [k2_dateipruefung] Datei ist für ‚Generic Klipper Printer‘ gesliced, nicht für den
+K2 Plus – im Slicer Drucker ‚Creality K2 Plus 0.4 nozzle - Pi‘ wählen und neu slicen
+(MakerWorld-3MF mit Strg+I importieren statt öffnen). Druck nicht gestartet.
+```
+
+Grund: Eine solche Datei kennt weder die Bettgröße des K2 (350 × 350 mm) noch seine
+Geschwindigkeiten und lief bisher nur mit Warnung an. Wer das alte Verhalten will,
+trägt `klipper_generisch: True` ein. Dateien ganz ohne Druckerprofil (§8, z. B. Cura)
+werden weiterhin mit Hinweis gedruckt.
