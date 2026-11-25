@@ -2229,6 +2229,18 @@ def test_makros_resume_kopfpruefung():
         pr = _rprinter(param, kcfg, k2_box={"change_aborted": True}, **upd)
         lines, _m = R(pr)
         assert lines[0] == "KTWO_BOX_RESUME_CHECK MOVE=0", (upd, lines)
+    # Filamentende (25.11.2026): kein Abbruch, aber Kopf LEER -> Prüfung
+    pr = _rprinter(param, kcfg, k2_box={"change_aborted": False,
+                                        "head_filament": False})
+    lines, msgs = R(pr)
+    assert lines[:lines.index("_PI_RESUME_PREPARE")] == \
+        ["KTWO_BOX_RESUME_CHECK MOVE=1"], lines
+    assert any("action:prompt_end" in m for m in msgs), msgs
+    # Kopf voll bzw. unbekannt ohne Abbruch: kein Prüfbefehl
+    for hf in (True, None):
+        lines, _m = R(_rprinter(param, kcfg, k2_box={"change_aborted": False,
+                                                     "head_filament": hf}))
+        assert not [l for l in lines if "RESUME_CHECK" in l], (hf, lines)
     # ohne Abbruch bzw. nicht pausiert: kein Prüfbefehl (Ablauf unverändert)
     for upd in ({"k2_box": {"change_aborted": False}},
                 {"k2_box": {"change_aborted": True},
@@ -2681,6 +2693,71 @@ def test_runout_pausenpfade():
     else:
         raise AssertionError("ohne Druck hätte ein G-Code-Fehler kommen müssen")
     return "aus/ohne Freigabe/Kopf/IDLE/0x0c/Slot/Hub/Einlauf/kein Ersatz/kein Etikett/kein Bus -> Pause ohne Bewegung; Kettenfehler -> Pause+RESUME gesperrt; ohne Druck -> Fehler"
+
+
+def test_runout_resume_laden():
+    """25.11.2026: Filamentende, Nutzer steckt neues Filament in Fach A und
+    drückt RESUME -> der Kopf ist noch LEER: RESUME lädt selbst (Kette wie
+    T<n>) bzw. sperrt – nie Luft drucken. Dazu das Hinweisfenster."""
+    # 1) Filamentende (Auto-Nachladen aus): Pause + Hinweisfenster
+    bus, printer, mod = build_runout(runout_refill="False")
+    printer.gcode.infos[:] = []
+    mod.cmd_runout(FakeGcmd({}))
+    raw = printer.gcode.infos
+    assert mod.runout_tnn == "T1A", mod.runout_tnn
+    assert raw.count("action:prompt_show") == 1 and \
+        "action:prompt_begin Filament leer – Druck pausiert" in raw and \
+        "action:prompt_footer_button Fortsetzen|RESUME|primary" in raw and \
+        any("Fach A" in r and "einzieht" in r for r in raw), raw
+    # 2) RESUME, Fach A noch leer: Laden scheitert -> gesperrt, pausiert,
+    #    Fenster erneut
+    bus.fail_after_mm = 50.0
+    printer.gcode.infos[:] = []
+    _check_raises(mod.cmd_resume_check, {"MOVE": "1"}, ["RESUME"])
+    assert printer.paused and mod.get_status()["head_filament"] is False
+    assert "action:prompt_show" in printer.gcode.infos, printer.gcode.infos
+    # 3) Filament in A gesteckt: RESUME lädt A bis in den Kopf + spült
+    bus, printer, mod = build_runout(runout_refill="False")
+    mod.cmd_runout(FakeGcmd({}))
+    bus.slots["A"]["filament"] = True
+    bus.head_at_mm = bus.odo + 100.0
+    n = len(printer.gcode.scripts)
+    g = FakeGcmd({"MOVE": "1"})
+    mod.cmd_resume_check(g)
+    sc = printer.gcode.scripts[n:]
+    assert sc[0] == "KTWO_BOX_PRE_OPT TNN=T1A Z_HOP=0 SOURCE=T", sc[:3]
+    assert any(l.startswith("KTWO_BOX_EXTRUDE TNN=T1A") for l in sc) and \
+        any(l.startswith("KTWO_BOX_FLUSH TNN=T1A") for l in sc), sc
+    assert mod.get_status()["head_filament"] is True and mod.runout_tnn == "", \
+        mod.get_status()["head_filament"]
+    assert any("lade T1A selbst" in m for m in g.infos), g.infos
+    # 4) Sperren ohne Bewegung: Option aus, MOVE=0, Quelle EXTERN
+    for over, params, text in (
+            ({"runout_resume_load": "False"}, {"MOVE": "1"},
+             "runout_resume_load: False"),
+            ({}, {"MOVE": "0"}, "RESUME darf nicht fahren"),
+            ({"allow_move": "False"}, {"MOVE": "1"}, "nicht freigegeben")):
+        bus, printer, mod = build_runout(runout_refill="False", **over)
+        mod.cmd_runout(FakeGcmd({}))
+        n, nb = len(printer.gcode.scripts), len(bus.calls)
+        _check_raises(mod.cmd_resume_check, params,
+                      ["RESUME gesperrt", "meldet KEIN Filament",
+                       "Luft", "PAUSIERT", text])
+        assert printer.gcode.scripts[n:] == [] and len(bus.calls) == nb, \
+            (text, printer.gcode.scripts[n:])
+    # 5) Kopf voll (Filament von Hand bis in den Kopf): RESUME frei, nichts
+    bus, printer, mod = build_runout(runout_refill="False")
+    mod.cmd_runout(FakeGcmd({}))
+    bus.head = True
+    n = len(printer.gcode.scripts)
+    g = FakeGcmd({"MOVE": "1"})
+    mod.cmd_resume_check(g)
+    assert printer.gcode.scripts[n:] == [] and \
+        any("kein abgebrochener Wechsel" in m for m in g.infos), g.infos
+    return ("Filamentende: Hinweisfenster (Fach A, Fortsetzen-Knopf); RESUME "
+            "bei leerem Kopf lädt A selbst (PRE_OPT/EXTRUDE/FLUSH) bzw. sperrt "
+            "ohne Bewegung (Option aus, MOVE=0, keine Freigabe); Fach leer -> "
+            "gesperrt + Fenster erneut; Kopf voll -> frei")
 
 
 def test_runout_befehle():
@@ -7150,6 +7227,7 @@ TESTS = [
     ("Runout: Slot-Wahl-Regel + Optionen", test_runout_slotwahl),
     ("Runout: Nachladen T1A -> T1C + RESUME", test_runout_ablauf),
     ("Runout: Pausenpfade + Sperren", test_runout_pausenpfade),
+    ("Runout: RESUME lädt bei leerem Kopf + Hinweisfenster", test_runout_resume_laden),
     ("Runout: AUTO_REFILL/SAME_MATERIAL", test_runout_befehle),
     ("Runout: printer.cfg/k2-module.cfg", test_runout_config),
     ("Material-DB laden (an/aus/kaputt) + Abfragen", test_material_db_laden),

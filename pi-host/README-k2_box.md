@@ -313,7 +313,7 @@ Lüfter, Rückfahrt.
 | `KTWO_BOX_END_OPT [RETURN=0\|1]` | M8200 O | Schacht verlassen, ggf. Rückfahrt XY + Z, Zieltemperatur zurück, Zustand/Kopfsensor zurück |
 | `KTWO_BOX_WAIT [TIMEOUT=]` | BOX_MODE_WAIT | 0x0a bis IDLE/PRINT, ERROR → Fehler |
 | `KTWO_BOX_ERROR_CLEAR [HEAD_LOADED=1]` / `KTWO_BOX_RESUME_FIX` | BOX_ERROR_CLEAR | Fehler quittieren (+ 0x04 [00 01]); `HEAD_LOADED=1` = Kopf von Hand als geladen bestätigt (nur ohne Kopfsensor-Zustand, §11) / Z-Hop nach Pause zurücknehmen (aus RESUME) |
-| `KTWO_BOX_RESUME_CHECK [MOVE=0\|1] [TEMP=]` | BOX_ERROR_RESUME_PROCESS | aus RESUME nach einem abgebrochenen Wechsel: Kopfsensor leer → RESUME gesperrt bzw. Nachholen (`resume_redo_change`, §11) |
+| `KTWO_BOX_RESUME_CHECK [MOVE=0\|1] [TEMP=]` | BOX_ERROR_RESUME_PROCESS | aus RESUME nach einem abgebrochenen Wechsel bzw. bei leerem Kopf: gesperrt, Nachholen (`resume_redo_change`, §11) bzw. Laden nach Filamentende (`runout_resume_load`, §9a) |
 
 Controller-Erweiterungen (wiederverwendet, Frame-Folgen unverändert):
 `do_extrude(sensor_fn, sensor_timeout, poll_interval, stage7_fn, stage7_delay)`,
@@ -421,6 +421,26 @@ RESUME mitten im Wechsel. Bedienung: `config-pi/README.md`.
   auch `pause_resume.is_paused`.
 - Nebenbei (A6): `cut_pos_x` steht nicht mehr in `k2-module.cfg` (SAVE_CONFIG-
   Konflikt); Default −7.80 aus `CHANGE_DEFAULTS` bzw. SAVE_CONFIG-Block.
+
+### 9a. RESUME nach einem Filamentende bei leerem Kopf (Ergänzung 25.11.2026)
+
+Anlass: Filamentende mit `runout_refill: False` – der Druck pausiert. Der Nutzer steckte neues Filament ein und drückte
+„Fortsetzen“, das Filament war aber nicht bis in den Kopf geladen: Das RESUME-Makro druckte nach 82 mm „Vorextrusion“
+ins Leere drei Schichten Luft. Klipper meldet ein Filamentende nur beim Wechsel voll → leer, nicht erneut.
+
+- `cmd_runout` merkt das Fach (`runout_tnn`) und öffnet ein **Hinweisfenster** (Klipper-Prompt `action:prompt_*`, in
+  Mainsail und auf der Anzeige): Spule in Fach X einsetzen, Filament einziehen lassen (Anzeige nicht mehr rot), dann
+  „Fortsetzen“ (Knopf im Fenster = `RESUME`). `RESUME` und `CANCEL_PRINT` schließen das Fenster.
+- Das RESUME-Makro ruft `KTWO_BOX_RESUME_CHECK` jetzt auch, wenn **kein** Wechsel abgebrochen ist, der Kopfsensor aber
+  LEER meldet. Dann lädt `k2_box` das Fach des Filamentendes selbst (dieselbe Kette wie das Nachholen in §11:
+  PRE_OPT, Schacht + Heizen, ggf. Rückzug, EXTRUDE, Spülen, END_OPT) und setzt erst danach fort. Option
+  `runout_resume_load` (Standard **True**; wirkt nur mit `allow_write` + `allow_move`).
+- Kann nicht geladen werden (Fach noch leer, Quelle EXTERN, Option aus, keine Freigabe, keine Referenz): RESUME
+  **gesperrt**, Druck bleibt pausiert, Meldung mit Grund, Fenster erneut. Ohne Bewegung.
+- Meldet der Kopfsensor Filament (z. B. von Hand bis in den Kopf geschoben), läuft RESUME wie bisher.
+
+Ergänzend pausiert `k2_resume` den Druck, wenn der Kopf im laufenden Druck leer ist und der Extruder trotzdem 20 mm
+fördert (`head_empty_pause_mm`, README-k2_resume.md §2a).
 
 ## 10. RESUME nach abgebrochenem Wechsel im Schneidbereich (Ergänzung 17.10.2026)
 

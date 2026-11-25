@@ -1028,6 +1028,92 @@ def test_modul_ablauf():
           R.stand_lesen(m5.state_file)["grund"] == "abgebrochen")
 
 
+def test_filamentende():
+    """25.11.2026: B Luftdruck-Wächter, C Stand bleibt an der letzten Stelle
+    MIT Filament, Grund filamentende."""
+    pr, m = _modul()
+    f = os.path.join(TMP, "fe", "druckstand.json")
+    m.state_file = f
+    p = _datei_mitte()
+    sd = {"file_path": p, "file_position": 50, "is_active": True}
+    pr.objs["virtual_sdcard"] = type("SD", (), {"sdcard_dirname": TMP,
+                                                "get_status": lambda s_, e: sd})()
+    live = {"live_position": [110.0, 120.0, 0.4, 0.0]}
+    pr.objs["motion_report"] = type("MR", (), {"get_status": lambda s_, e: live})()
+    pr.objs["gcode_move"] = Obj({"homing_origin": [0, 0, 0, 0]})
+    pr.objs["heater_bed"] = Obj({"target": 55.0})
+    pr.objs["extruder"] = Obj({"target": 220.0})
+    sens = {"filament_detected": True, "enabled": True}
+    pr.objs["filament_switch_sensor filament_sensor"] = Obj(sens)
+    pr.objs["pause_resume"] = Obj({"is_paused": False})
+    pr.objs["k2_box"] = Obj({"chain_error": "", "chain_active": False})
+    pr.objs["k2_abbruch"] = Obj({"vorbereitung": False})
+    th = pr.objs["toolhead"].st
+    th["position"] = [110, 120, 0.4, 1000.0]
+    pr.objs["print_stats"].st.update({"state": "printing", "info": {}})
+    for t in range(4):
+        sd["file_position"] = 50 + 10 * t
+        m._tick(float(t))
+    gut = R.stand_lesen(f)
+    check("C: Stand mit Filament geschrieben (Datei alle 2 s, Speicher laufend)",
+          gut and gut["grund"] == "laufend" and m.ds.snap["pos_hi"] == 80,
+          (gut, m.ds.snap))
+    # Filament ist weg (Kopf leer), Datei läuft weiter, Kopf fährt woanders hin
+    sens["filament_detected"] = False
+    live["live_position"] = [10.0, 10.0, 0.4, 0.0]
+    for t in range(4, 10):
+        sd["file_position"] = 50 + 10 * t
+        th["position"][3] += 5.0            # 6 x 5 mm gefördert
+        m._tick(float(t) + 10)
+    check("C: kein neuer Stand bei leerem Kopf (Luft)",
+          m.ds.snap["pos_hi"] == 80 and m.ds.snap["kopf"][0] == 110.0, m.ds.snap)
+    check("B: nach > 20 mm gefördert bei leerem Kopf -> genau eine PAUSE",
+          len(pr.reactor.callbacks) == 1, pr.reactor.callbacks)
+    pr.reactor.callbacks[0](0)
+    check("B: PAUSE ausgeführt + Meldung", "PAUSE" in pr.gcode.run and
+          any("Luft" in i for i in pr.gcode.info), (pr.gcode.run, pr.gcode.info))
+    th["position"][3] += 50.0
+    m._tick(30.0)
+    check("B: nicht wiederholt, solange der Kopf leer bleibt",
+          len(pr.reactor.callbacks) == 1)
+    # Pause -> Grund filamentende, Stelle = letzte mit Filament
+    pr.objs["print_stats"].st["state"] = "paused"
+    m._tick(31.0)
+    st = R.stand_lesen(f)
+    check("C: Pause bei leerem Kopf -> Grund filamentende, alte Stelle",
+          st["grund"] == "filamentende" and st["pos_hi"] == 80 and
+          st["kopf"][0] == 110.0, st)
+    check("C: filamentende ist fortsetzbar", "filamentende" in R.STAND_FORTSETZBAR)
+    # B bleibt still: CFS-Wechsel aktiv bzw. Druckvorbereitung
+    for name, obj, key in (("CFS-Wechsel", "k2_box", "chain_active"),
+                           ("Druckvorbereitung", "k2_abbruch", "vorbereitung")):
+        pr2, m2 = _modul()
+        m2.state_file = None
+        pr2.objs.update({k: pr.objs[k] for k in (
+            "virtual_sdcard", "motion_report", "gcode_move", "heater_bed",
+            "extruder", "filament_switch_sensor filament_sensor",
+            "pause_resume", "k2_box", "k2_abbruch")})
+        pr2.objs[obj] = Obj(dict(pr.objs[obj].st, **{key: True}))
+        pr2.objs["toolhead"].st["position"] = [0, 0, 0, 0.0]
+        pr2.objs["print_stats"].st.update({"state": "printing", "info": {}})
+        for t in range(10):
+            pr2.objs["toolhead"].st["position"][3] += 10.0
+            m2._tick(float(t))
+        check("B: still während %s" % name, not pr2.reactor.callbacks)
+    # head_empty_pause_mm 0 = aus
+    pr3, m3 = _modul()
+    m3.kopf_leer_mm = 0.0
+    pr3.objs.update({k: pr.objs[k] for k in (
+        "filament_switch_sensor filament_sensor", "pause_resume", "k2_abbruch")})
+    pr3.objs["k2_box"] = Obj({"chain_error": "", "chain_active": False})
+    pr3.objs["toolhead"].st["position"] = [0, 0, 0, 0.0]
+    pr3.objs["print_stats"].st.update({"state": "printing"})
+    for t in range(10):
+        pr3.objs["toolhead"].st["position"][3] += 10.0
+        m3._luftdruck_pruefen()
+    check("B: Option 0 = aus", not pr3.reactor.callbacks)
+
+
 def test_py39():
     for f in ("k2_resume.py", "test_k2_resume.py"):
         ast.parse(open(os.path.join(HIER, f), encoding="utf-8").read(),
@@ -1058,7 +1144,7 @@ TESTS = [test_scan, test_bogen, test_keep, test_probe, test_fehlerfaelle,
          test_datei, test_cli, test_modul, test_makros,
          test_keine_doppelten_abschnitte, test_echtdateien,
          test_start_print_varianten, test_genau, test_druckstand,
-         test_modul_stand, test_modul_ablauf, test_py39]
+         test_modul_stand, test_modul_ablauf, test_filamentende, test_py39]
 
 if __name__ == "__main__":
     for t in TESTS:

@@ -937,7 +937,7 @@ def _cli(argv):
 STAND_VERSION = 1
 # Gründe, aus denen sich ein Druck fortsetzen lässt
 STAND_FORTSETZBAR = ("notaus", "stoerung", "abgebrochen", "fehler", "pause",
-                     "unterbrochen")
+                     "unterbrochen", "filamentende")
 UEBERGANG = {"paused": "pause", "cancelled": "abgebrochen",
              "complete": "fertig", "error": "fehler", "standby": "beendet"}
 
@@ -1048,8 +1048,14 @@ class K2Resume:
                                               minval=0.5, maxval=60.0)
         self.bed_hold_min = config.getfloat("bed_hold_min", 60.0, minval=0.,
                                             maxval=600.0)
+        # B (25.11.2026): Kopfsensor LEER, Druck läuft, aber der Extruder hat
+        # schon so viele mm gefördert -> PAUSE (Luftdruck). 0 = aus.
+        self.kopf_leer_mm = config.getfloat("head_empty_pause_mm", 20.0,
+                                            minval=0.0, maxval=500.0)
+        self.sensor = "filament_sensor"
         self.state_file = None
         if hasattr(config, "get"):
+            self.sensor = config.get("filament_sensor", "filament_sensor")
             self.state_file = config.get("state_file", None)
         if not self.state_file and hasattr(self.printer, "get_start_args"):
             cfgf = (self.printer.get_start_args() or {}).get("config_file")
@@ -1069,6 +1075,8 @@ class K2Resume:
         self._last_write = 0.0
         self._timer = None
         self._aus = False           # Klipper im Shutdown: nichts mehr schreiben
+        self._leer_e0 = None        # B: E-Stand, als der Kopf leer wurde
+        self._leer_pausiert = False  # B: schon pausiert (bis Kopf wieder voll)
         self.hold = None            # {"temp", "bis"} Bett warm halten
         self._hold_timer = None
         if hasattr(self.printer, "register_event_handler"):
@@ -1180,6 +1188,10 @@ class K2Resume:
                 live = None
         if live is None:
             return state, False
+        if self._kopf() is False:
+            # C: Kopf leer -> es wird nichts gedruckt (Luft); der Stand bleibt
+            # an der letzten Stelle MIT Filament stehen
+            return state, False
         origin = list(self._status("gcode_move").get("homing_origin") or
                       [0.0, 0.0, 0.0])
         bett = self._status("heater_bed").get("target")
@@ -1191,6 +1203,59 @@ class K2Resume:
             st = os.stat(path)
             extra.update({"groesse": st.st_size, "mtime": int(st.st_mtime)})
         return state, self.ds.sample(eventtime, state, sd, live, origin, extra)
+
+    def _kopf(self):
+        """Kopf-Filamentsensor: True/False, None = unbekannt/kein Sensor."""
+        if not self.sensor:
+            return None
+        st = self._status("filament_switch_sensor %s" % self.sensor)
+        if "filament_detected" not in st or st.get("enabled") is False:
+            return None
+        return bool(st["filament_detected"])
+
+    def _luftdruck_pruefen(self):
+        """B: Kopf leer, Druck läuft (nicht pausiert, kein CFS-Wechsel, keine
+        Druckvorbereitung) und der Extruder fördert trotzdem -> PAUSE."""
+        if self.kopf_leer_mm <= 0:
+            return
+        kopf = self._kopf()
+        frei = (kopf is False
+                and not self._status("pause_resume").get("is_paused")
+                and not self._status("k2_box").get("chain_active")
+                and not self._status("k2_abbruch").get("vorbereitung"))
+        if not frei:
+            self._leer_e0 = None
+            if kopf is not False:
+                self._leer_pausiert = False
+            return
+        pos = self._status("toolhead").get("position") or []
+        if len(pos) < 4:
+            return
+        e = float(pos[3])
+        if self._leer_e0 is None:
+            self._leer_e0 = e
+            return
+        weg = e - self._leer_e0
+        if weg < self.kopf_leer_mm or self._leer_pausiert:
+            return
+        self._leer_pausiert = True
+        self.reactor.register_callback(lambda ev: self._luftdruck_pause(weg))
+
+    def _luftdruck_pause(self, weg):
+        msg = ("Kopf-Filamentsensor meldet KEIN Filament, der Druck hat aber "
+               "schon %.0f mm gefördert – Druck PAUSIERT (sonst würde Luft "
+               "gedruckt). Filament laden, dann Fortsetzen." % weg)
+        if self.konsole is not None:
+            self.konsole.fehler(msg)
+        else:
+            self.gcode.respond_info("!! [k2_resume] " + msg)
+        try:
+            self.gcode.run_script("PAUSE")
+        except Exception:
+            logging.exception("k2_resume: PAUSE bei leerem Kopf")
+        box = self.printer.lookup_object("k2_box", None)
+        if box is not None and hasattr(box, "_runout_hinweis"):
+            box._runout_hinweis()
 
     def _stand_speichern(self, stand):
         self.stand = stand
@@ -1214,6 +1279,7 @@ class K2Resume:
             prev = self._ps_state
             self._ps_state = state
             if state == "printing":
+                self._luftdruck_pruefen()
                 if prev != "printing" and self.hold is not None:
                     self.hold = None        # neuer Druck führt das Bett selbst
                 if neu and eventtime - self._last_write >= self.state_interval:
@@ -1222,7 +1288,10 @@ class K2Resume:
                     self._stand_speichern(st)
                     self._last_write = eventtime
             elif prev == "printing" and state in UEBERGANG:
-                st = self.ds.ende(UEBERGANG[state], time.time())
+                grund = UEBERGANG[state]
+                if state == "paused" and self._kopf() is False:
+                    grund = "filamentende"
+                st = self.ds.ende(grund, time.time())
                 if st is not None:
                     self._stand_speichern(st)
         except Exception:

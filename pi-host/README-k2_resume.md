@@ -95,6 +95,23 @@ Pause zum Abbruch (live 23.11.2026). Der Vorspann meldet jetzt am Ende `_PI_ABBR
 **E – Abfragen in Mainsail.** Not-Aus und „Druck abbrechen“ fragen nach (`uiSettings.confirmOnEmergencyStop`,
 `uiSettings.confirmOnCancelJob`; `install.sh` setzt beide, s. Abschnitt 6).
 
+**Filamentende (25.11.2026).** Anlass: Nach einem Filamentende steckte der Nutzer neues Filament ein und drückte
+dreimal „Fortsetzen“ – das Filament war aber nicht bis in den Kopf geladen, der Drucker druckte drei Schichten Luft.
+Klipper meldet ein Filamentende nur im Moment, in dem der Sensor von „voll“ auf „leer“ wechselt; ist der Kopf beim
+Fortsetzen schon leer, kommt keine neue Meldung. Dagegen jetzt drei Teile:
+
+- **A – Fortsetzen lädt selbst** (`k2_box`, Option `runout_resume_load`, Standard an): Meldet der Kopfsensor beim
+  `RESUME` LEER, lädt der Drucker das Filament aus dem Fach des Filamentendes bis in den Kopf (Kette wie `T<n>`:
+  Schacht, Einzug, Spülen) und setzt erst dann fort. Geht das nicht (Fach noch leer, Quelle EXTERN, keine Freigabe),
+  bleibt der Druck pausiert – mit Meldung. Beim Filamentende öffnet sich in Mainsail und auf der Anzeige ein Fenster
+  mit den drei Schritten (Spule einsetzen, Filament einziehen lassen, dann „Fortsetzen“) und einem Fortsetzen-Knopf.
+- **B – Luftdruck-Wächter** (`head_empty_pause_mm`, Standard 20 mm, 0 = aus): Meldet der Kopfsensor im laufenden Druck
+  LEER und hat der Extruder seitdem 20 mm gefördert, pausiert der Drucker. Ausgenommen: Pause, CFS-Wechsel
+  (`chain_active`) und Druckvorbereitung (`k2_abbruch`).
+- **C – Stand bleibt an der letzten Stelle mit Filament:** Solange der Kopfsensor LEER meldet, entsteht kein neuer
+  Druckstand. Pausiert der Druck bei leerem Kopf, heißt der Grund `filamentende`. Auch nach Luftdrucken setzt
+  `PRINT_FROM_LAYER` an der richtigen Stelle an.
+
 **Grenze:** Nach einem Not-Aus ist die Z-Referenz verloren (Motoren stromlos, das Bett sackt ab). Die Fortsetzung tastet
 dann neben dem Teil neu an; kann sie das Bett nicht ausrichten (`TILT=0`), bleibt ein Höhenfehler von bis zu etwa
 ±0,2 mm über dem Teil. Am genauesten ist eine Fortsetzung nach **Abbrechen** (Motoren bleiben an, Modus `keep`).

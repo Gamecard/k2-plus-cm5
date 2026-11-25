@@ -2209,6 +2209,13 @@ def parse_options(opts):
         # (cmd_resume_check); wirkt zusätzlich nur mit allow_write UND
         # allow_move.
         "resume_redo_change": _bool("resume_redo_change", False),
+        # RESUME nach einem Filamentende (Runout) bei LEEREM Kopf: Filament
+        # aus dem Fach des Runouts selbst bis in den Kopf laden + spülen,
+        # dann erst fortsetzen (25.11.2026: RESUME ohne geladenes Filament
+        # druckte drei Schichten Luft). Kann nicht geladen werden (Fach leer,
+        # Quelle EXTERN, keine Freigabe): RESUME gesperrt, Druck bleibt
+        # pausiert. Default AN; nur mit allow_write UND allow_move.
+        "runout_resume_load": _bool("runout_resume_load", True),
         # Material-DB (Creality material_database.json, NICHT im Repo; von
         # install.sh vom Drucker kopiert). Leer = aus: bisheriges Verhalten.
         "material_database": _str("material_database", ""),
@@ -2400,7 +2407,7 @@ def parse_klipper_config(config):
                "poll_interval", "allow_move", "pause_on_failure",
                "filament_sensor", "cut_sensor", "runout_refill",
                "runout_require_color", "runout_resume",
-               "resume_redo_change", "material_database", "flush_mode",
+               "resume_redo_change", "runout_resume_load", "material_database", "flush_mode",
                "remain_material_file", "flush_clean", "flush_blow", "flush_blow_fan",
                "flush_clog_check", "ending_material_purge", "end_print_unload",
                "end_print_clear_load_error", "cancel_interrupt", "filament_source_file", "extern_rfid",
@@ -3508,6 +3515,8 @@ class PrinterK2Box:
         self.auto_refill = bool(self.cfg.get("runout_refill"))
         self.same_material = []
         self.runout_last = ""
+        # Fach des letzten Filamentendes (für RESUME bei leerem Kopf)
+        self.runout_tnn = ""
         # Restmaterial (Stock-Flag
         # is_use_ending_material): dict slot/tnn/why oder None. Gesetzt aus
         # dem 0x0a-Poll (Status 0x50 = Einlauf/Hub des Druck-Slots frei) nur
@@ -6740,6 +6749,9 @@ class PrinterK2Box:
     def _abort_text(self, ab):
         tnn = ab.get("tnn") or ""
         tool = self._tool_of(tnn) if tnn else ""
+        if ab.get("step") == "RUNOUT":
+            return "Filamentende%s" % (
+                ("; Fach %s = %s" % (tnn, tool)) if tnn else "")
         return "%s fehlgeschlagen%s" % (
             ab.get("step") or "?",
             ("; Ziel %s = %s" % (tnn, tool)) if tnn else "; Ziel-TNN unbekannt")
@@ -6788,9 +6800,7 @@ class PrinterK2Box:
         fahren (macros.cfg). Fehler = gcmd.error -> RESUME bricht ab."""
         ab = self.aborted
         if not ab:
-            gcmd.respond_info("[k2_box] RESUME-Prüfung: kein abgebrochener "
-                              "Wechsel offen")
-            return
+            return self._resume_check_kopf(gcmd)
         if not self._is_paused():
             gcmd.respond_info("[k2_box] RESUME-Prüfung: nicht pausiert – "
                               "nichts zu prüfen")
@@ -6859,6 +6869,46 @@ class PrinterK2Box:
                 "In der Pause nachholen: %s, dann RESUME.%s" % (load, hint),
                 why)
         return self._redo_change(gcmd, ab)
+
+    def _resume_check_kopf(self, gcmd):
+        """RESUME ohne abgebrochenen Wechsel (z. B. nach einem Filamentende):
+        Kopfsensor meldet KEIN Filament -> nie einfach weiterdrucken (es käme
+        nur Luft, live 25.11.2026). Filament aus dem Fach des Runouts laden
+        (Kette wie T<n>: Schacht, Einzug, Spülen) oder RESUME sperren."""
+        if not self._is_paused() or self._head_filament() is not False:
+            gcmd.respond_info("[k2_box] RESUME-Prüfung: kein abgebrochener "
+                              "Wechsel offen")
+            return None
+        if self.chain_error:
+            raise gcmd.error(
+                "RESUME gesperrt – CFS-Wechsel fehlgeschlagen: %s. Ursache "
+                "beheben, KTWO_BOX_ERROR_CLEAR, dann RESUME." % (
+                    self.chain_error,))
+        tnn = self.runout_tnn or self._loaded_tnn()
+        sens = self.cfg.get("filament_sensor")
+        why = self._runout_resume_reason(gcmd, tnn)
+        if why:
+            self._runout_hinweis()
+            raise gcmd.error(
+                "RESUME gesperrt: Kopf-Filamentsensor %s meldet KEIN Filament "
+                "– Fortsetzen würde Luft drucken. Druck bleibt PAUSIERT. "
+                "Filament laden (%s), dann RESUME. Kein automatisches Laden: "
+                "%s." % (sens, ("%s = %s" % (self._tool_of(tnn), tnn)) if tnn
+                         else "T<n>", why))
+        gcmd.respond_info(
+            "[k2_box] RESUME: Kopf leer (Filamentende) – lade %s selbst: "
+            "Schacht, Einzug bis in den Kopf, Spülen; danach Fortsetzen"
+            % (tnn,))
+        ab = {"step": "RUNOUT", "tnn": tnn, "source": "RUNOUT"}
+        try:
+            self._redo_change(gcmd, ab)
+        except Exception:
+            # Laden gescheitert (z. B. Fach noch leer): Druck bleibt
+            # pausiert, Hinweis erneut zeigen
+            self._runout_hinweis()
+            raise
+        self.runout_tnn = ""
+        return None
 
     def _redo_change(self, gcmd, ab):
         c = self.cfg
@@ -6932,6 +6982,63 @@ class PrinterK2Box:
     #   END_OPT RETURN=1 -> RESUME. Kein Rückzug/Schnitt: Hub und Kopf sind
     #   leer (der Spulenrest ist schon durch). Jeder Abbruch: Druck bleibt
     #   pausiert + Meldung (nie Shutdown).
+    def _runout_hinweis(self):
+        """Fenster in Mainsail/Anzeige (Klipper-Prompt, action:prompt_*):
+        was der Nutzer nach einem Filamentende tun soll. Schließt RESUME bzw.
+        CANCEL_PRINT (macros.cfg)."""
+        tnn = self.runout_tnn or self._loaded_tnn()
+        fach = tnn[-1:] if tnn else ""
+        if self.source == SOURCE_EXTERN:
+            schritte = [
+                "1) Neue Spule auf den externen Halter setzen.",
+                "2) Filament bis zur LED am Druckkopf schieben, dann "
+                "LOAD_FILAMENT.",
+                "3) Erst danach Fortsetzen."]
+        else:
+            f = ("Fach %s" % fach) if fach else "das Fach"
+            schritte = [
+                "1) Neue Spule in %s der CFS einsetzen." % f,
+                "2) Filamentende gerade abschneiden und in die Öffnung von %s "
+                "schieben, bis die CFS es selbst einzieht (Anzeige am Fach "
+                "nicht mehr rot)." % f,
+                "3) Dann Fortsetzen: Der Drucker lädt das Filament selbst bis "
+                "in den Kopf, spült am Schacht und druckt weiter."]
+        zeilen = ["action:prompt_begin Filament leer – Druck pausiert"]
+        zeilen += ["action:prompt_text %s" % z for z in schritte]
+        zeilen += ["action:prompt_text Bitte nicht Not-Aus drücken und den "
+                   "Drucker nicht ausschalten – sonst geht die Höhe verloren.",
+                   "action:prompt_footer_button Fortsetzen|RESUME|primary",
+                   "action:prompt_show"]
+        try:
+            for z in zeilen:
+                self.gcode.respond_info(z)
+        except Exception:
+            logging.exception("k2_box: Hinweisfenster Filamentende")
+
+    def _runout_resume_reason(self, gcmd, tnn):
+        """None = Laden beim RESUME erlaubt, sonst Klartext, warum nicht."""
+        c = self.cfg
+        if self.source == SOURCE_EXTERN:
+            return ("Quelle EXTERN – Filament der externen Spule von Hand "
+                    "laden (bis zur LED am Druckkopf schieben, LOAD_FILAMENT)")
+        if not c.get("runout_resume_load"):
+            return "aus ([k2_box] runout_resume_load: False)"
+        if not self._released():
+            return ("CFS-Wechsel nicht freigegeben ([k2_box] allow_write=%s, "
+                    "allow_move=%s)" % (c.get("allow_write"),
+                                        c.get("allow_move")))
+        if not gcmd.get_int("MOVE", 0):
+            return ("RESUME darf nicht fahren (_PI_FREIGABE allow_move, "
+                    "Referenz X/Y/Z oder Pausenposition fehlt)")
+        if not tnn:
+            return "Fach des Filamentendes unbekannt"
+        if self.chain.get("active"):
+            return "Wechselkette noch offen (%s)" % (
+                self.chain.get("tnn") or "ohne TNN",)
+        if not self._homed_ok():
+            return "X/Y/Z nicht referenziert"
+        return None
+
     def _runout_stop(self, gcmd, text, dry=False):
         msg = "[k2_box] RUNOUT: kein automatisches Nachladen – %s" % (text,)
         self.runout_last = msg
@@ -6942,6 +7049,7 @@ class PrinterK2Box:
             self._respond_error(
                 "%s – Druck bleibt PAUSIERT. Filament von Hand nachlegen bzw. "
                 "wechseln (z. B. T<n>), dann RESUME." % (msg,))
+            self._runout_hinweis()
             if not self._is_paused():
                 try:
                     self._script(["PAUSE"])
@@ -7067,6 +7175,8 @@ class PrinterK2Box:
 
     def cmd_runout(self, gcmd):
         dry = bool(gcmd.get_int("DRY_RUN", 0))
+        if not dry:
+            self.runout_tnn = self._loaded_tnn() or self.runout_tnn
         if self.source == SOURCE_EXTERN:
             # Quelle EXTERN: kein CFS-Nachladen, normale Pause (Upstream hat
             # vor runout_gcode schon pausiert) – nichts gesendet/bewegt
