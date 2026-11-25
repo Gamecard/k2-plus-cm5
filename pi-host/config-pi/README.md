@@ -232,6 +232,32 @@ Prüfen in der Konsole beim Druckstart: „Warten auf Kammertemperatur 45 °C“
 
 Namensregel (Upstream, `gcode.py`): Ein Befehl darf nicht mit Buchstabe + Ziffer beginnen (`register_command` lehnt `K2_*` ab: „Can't register … invalid name“) und sollte überhaupt **keine Ziffern** enthalten: der Parser (`_process_commands`, `args_r = ([A-Z_]+|[A-Z*])`) kappt den Namen an der ersten Ziffer (`_K2_X` → `_K2`, `KTWO_485_STATUS` → `KTWO_485`, beides „Unknown command“, obwohl die Registrierung klappt – Batch-Probe G). Deshalb: Hilfsmakros `_PI_*`, Modulbefehle `KTWO_*` (z. B. `KTWO_MOTOR_INIT`, `KTWO_PRTOUCH_READ`, `KTWO_BOX_STATUS`, `KTWO_BELT_TEST`, `KTWO_BUS_STATUS`). Webhook-Endpunkte (`k2_belt_test`) prüft Upstream nicht (`webhooks.register_endpoint`) – sie behalten `k2_`. Config-Abschnitte bleiben `[k2_*]`.
 
+### Geschwindigkeitsregler über 100 % und Abschaltung der Düsenplatine (25.11.2026)
+
+**Was passiert war:** Zweimal schaltete Klipper mitten im Druck ab, beide Male mit
+`MCU 'nozzle_mcu' shutdown: Stepper too far in past`, einmal bei 200 % und einmal bei 150 % im Mainsail-Regler
+(`M220`). Beide Abschaltungen kamen **genau beim Rückzug** (`G1 E-1.2 F2400`).
+
+**Warum:** Der Regler beschleunigt nicht nur das Drucken, sondern auch reine Extruder-Bewegungen. Der Rückzug läuft
+normal mit 40 mm/s; bei 150 % werden daraus 60 mm/s. Beim Extruder (`microsteps: 16`, `rotation_distance: 6.9`,
+≈ 464 Schritte/mm) sind das ≈ 27 800 Schritte pro Sekunde – mehr, als die Düsenplatine abarbeitet (bei 100 %
+≈ 18 500, das lief einen 8-Stunden-Druck lang ohne Fehler). Beim eigentlichen Drucken sind es auch bei 200 % nur
+≈ 5 000–6 000 Schritte/s.
+
+**Kein Kabelfehler:** Vor beiden Abschaltungen keine fehlerhaften Bytes (`bytes_invalid = 0`), Antwortzeit
+0–1 ms, kein „Lost communication“. Die wenigen Wiederholungen direkt davor passen zu einer überlasteten Platine.
+
+**Abhilfe:**
+
+| Einstellung | Wert | Wirkung | Nachteil |
+|---|---|---|---|
+| `[extruder] max_extrude_only_velocity` (printer.cfg) | 40 mm/s | Rückzug und Wiederherstellen nie schneller als 40 mm/s, egal wie hoch der Regler steht | keiner bei den vorhandenen Profilen (die ziehen mit 40 mm/s zurück); ein Profil mit schnellerem Rückzug würde auf 40 mm/s gebremst |
+| `[gcode_macro M220]` (macros.cfg) | höchstens 150 % (`variable_max_prozent`) | Regler geht nicht über 150 %, mit Meldung | vorsorglich; ob nach der Rückzugsgrenze mehr geht, ist ungetestet |
+
+**Grenze unabhängig davon:** Das Profil „Generic PLA“ erlaubt 14 mm³/s. Bei 200 % wären es ≈ 28 mm³/s – das schmilzt
+normales PLA nicht schnell genug (zu wenig Material). Für deutlich mehr Tempo braucht es High-Speed-PLA und ein
+passendes Profil.
+
 ## 3. Installation (Pi, ANNAHME Standard-Klipper-Installation unter `~/klipper`)
 
 Alles liegt in `~/klipper/klippy/extras/` (ein Ziel, keine Pfad-Tricks):
